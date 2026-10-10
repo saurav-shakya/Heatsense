@@ -56,6 +56,8 @@ class Ward:
     ndvi: float  # mean green cover, -1..1
     popDensity: float  # people per km^2
     vulnerabilityScore: float  # V in [0, 1]
+    centroid: list[float] | None = None  # [lon, lat], used to pick the forecast grid point
+    fixture: bool = False  # True for the synthetic placeholder layer
 
     def to_item(self) -> dict:
         return to_ddb(asdict(self))
@@ -86,6 +88,11 @@ class Subscriber:
     optedIn: bool = True
     lastAlertAt: str | None = None
     createdAt: str | None = field(default=None)
+    # Alert cap bookkeeping (written by repo.claim_alert): IST date of the last alert,
+    # how many went out that day, and "<target date>:<level>:<slot>" of the last one.
+    alertDate: str | None = None
+    alertsToday: int | None = None
+    lastAlertKey: str | None = None
 
     def to_item(self) -> dict:
         return to_ddb(asdict(self))

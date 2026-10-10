@@ -104,7 +104,9 @@
   .map-area { height: auto; border: 0; }
 }
 
-.map { position: absolute; inset: 0; background: var(--sheet); }
+/* .map-area raises specificity over maplibre-gl.css (.maplibregl-map { position: relative }), which now
+   loads with the lazy map chunk, after this file. */
+.map-area .map { position: absolute; inset: 0; background: var(--sheet); }
 
 /* ---------------------------------------------------------------- lead */
 .headline {
@@ -403,3 +405,26 @@
 /* ---------------------------------------------------------------- map chrome */
 .maplibregl-ctrl-group { border-radius: 0 !important; box-shadow: none !important; border: 1px solid var(--ink); }
 .maplibregl-ctrl-attrib { font-size: 11px; }
+
+/* ---------------------------------------------------------------- replay + export */
+.replay-banner {
+  padding: var(--space-2) var(--space-4);
+  background: var(--ink);
+  color: var(--sheet);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+
+.top-wards .export {
+  margin-top: var(--space-3);
+  font-size: var(--t-sm);
+}
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}

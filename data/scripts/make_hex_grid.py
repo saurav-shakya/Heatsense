@@ -12,6 +12,8 @@ import math
 import random
 from pathlib import Path
 
+from vulnerability import vulnerability_score
+
 OUT = Path(__file__).resolve().parent.parent / "fixtures" / "delhi_wards.geojson"
 HEX_RADIUS_KM = 1.5
 KM_PER_DEG_LAT = 110.57
@@ -58,10 +60,7 @@ def synthetic_attributes(lon: float, lat: float, rng: random.Random) -> dict:
     pop_density = round(4000 + 40000 * core + rng.uniform(-2500, 2500))
     ndvi = round(min(max(0.12 + 0.45 * green - 0.08 * core + rng.uniform(-0.04, 0.04), 0.02), 0.7), 3)
     lst_offset = round(4.5 * core - 4.0 * green + rng.uniform(-0.8, 0.8), 2)
-    # V: denser is worse, greener is better (weights placeholder until Phase 2).
-    density_n = min(pop_density / 45000, 1.0)
-    green_n = 1 - min(ndvi / 0.6, 1.0)
-    vulnerability = round(min(max(0.55 * density_n + 0.45 * green_n, 0.05), 1.0), 3)
+    vulnerability = vulnerability_score(pop_density, ndvi)
     return {"lstOffset": lst_offset, "ndvi": ndvi, "popDensity": pop_density, "vulnerabilityScore": vulnerability}
 
 

@@ -1,0 +1,32 @@
+[
+  {
+    "latitude": 28.625,
+    "longitude": 77.25,
+    "generationtime_ms": 0.0880,
+    "utc_offset_seconds": 0,
+    "timezone": "GMT",
+    "timezone_abbreviation": "GMT",
+    "elevation": 216.0,
+    "hourly_units": {"time": "iso8601", "temperature_2m": "°C", "relative_humidity_2m": "%"},
+    "hourly": {
+      "time": ["2024-05-28T07:00", "2024-05-28T08:00", "2024-05-28T09:00"],
+      "temperature_2m": [44.1, 45.6, 46.3],
+      "relative_humidity_2m": [14, 12, 11]
+    }
+  },
+  {
+    "latitude": 28.5,
+    "longitude": 77.125,
+    "generationtime_ms": 0.0410,
+    "utc_offset_seconds": 0,
+    "timezone": "GMT",
+    "timezone_abbreviation": "GMT",
+    "elevation": 238.0,
+    "hourly_units": {"time": "iso8601", "temperature_2m": "°C", "relative_humidity_2m": "%"},
+    "hourly": {
+      "time": ["2024-05-28T07:00", "2024-05-28T08:00", "2024-05-28T09:00"],
+      "temperature_2m": [43.2, 44.8, null],
+      "relative_humidity_2m": [15, 13, null]
+    }
+  }
+]

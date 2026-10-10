@@ -46,13 +46,23 @@ def put_wards(wards: list[Ward]) -> None:
             batch.put_item(Item=ward.to_item())
 
 
-def set_ward_daily(ward_id: str, daily: list[dict]) -> None:
-    """Store the per-day peak risk summary on the ward row (read by GET /wards)."""
-    _table(config.WARDS_TABLE).update_item(
-        Key={"wardId": ward_id},
-        UpdateExpression="SET daily = :d",
-        ExpressionAttributeValues={":d": to_ddb(daily)},
-    )
+def set_ward_daily(ward_id: str, daily: list[dict], replay_of: str | None = None) -> None:
+    """Store the per-day peak risk summary on the ward row (read by GET /wards).
+
+    `replay_of` marks scores computed from a past heatwave's weather, so the map can say so.
+    """
+    if replay_of:
+        _table(config.WARDS_TABLE).update_item(
+            Key={"wardId": ward_id},
+            UpdateExpression="SET daily = :d, replayOf = :r",
+            ExpressionAttributeValues={":d": to_ddb(daily), ":r": replay_of},
+        )
+    else:
+        _table(config.WARDS_TABLE).update_item(
+            Key={"wardId": ward_id},
+            UpdateExpression="SET daily = :d REMOVE replayOf",
+            ExpressionAttributeValues={":d": to_ddb(daily)},
+        )
 
 
 # --- Risk forecasts --------------------------------------------------------
@@ -79,15 +89,63 @@ def put_subscriber(sub: Subscriber) -> None:
     _table(config.SUBSCRIBERS_TABLE).put_item(Item=sub.to_item())
 
 
-def opt_out(phone: str) -> bool:
-    """Mark a subscriber opted out. Returns False if the phone isn't subscribed."""
+def get_subscriber(phone: str) -> dict | None:
+    item = _table(config.SUBSCRIBERS_TABLE).get_item(Key={"phone": phone}).get("Item")
+    return from_ddb(item) if item else None
+
+
+def _set_opted_in(phone: str, value: bool) -> bool:
     table = _table(config.SUBSCRIBERS_TABLE)
     try:
         table.update_item(
             Key={"phone": phone},
-            UpdateExpression="SET optedIn = :f",
+            UpdateExpression="SET optedIn = :v",
             ConditionExpression="attribute_exists(phone)",
-            ExpressionAttributeValues={":f": False},
+            ExpressionAttributeValues={":v": value},
+        )
+        return True
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        return False
+
+
+def opt_out(phone: str) -> bool:
+    """Mark a subscriber opted out. Returns False if the phone isn't subscribed."""
+    return _set_opted_in(phone, False)
+
+
+def opt_in(phone: str) -> bool:
+    """Opt an existing subscriber back in (WhatsApp START). False if the phone isn't subscribed."""
+    return _set_opted_in(phone, True)
+
+
+def claim_alert(phone: str, today: str, key: str, now_iso: str, max_per_day: int) -> bool:
+    """Atomically reserve one alert for this subscriber, or return False.
+
+    Refuses when the subscriber has opted out, already had `max_per_day` alerts on IST date
+    `today`, or was already sent an alert with the same `key` (same target day, level and
+    slot), so a 3-hourly refresh with an unchanged level doesn't re-alert. Conditional
+    writes mean two overlapping dispatcher runs can't both send.
+    """
+    table = _table(config.SUBSCRIBERS_TABLE)
+    values = {":d": today, ":k": key, ":now": now_iso, ":t": True}
+    try:
+        # Same IST day as the last alert: count up, unless capped or a duplicate.
+        table.update_item(
+            Key={"phone": phone},
+            UpdateExpression="SET alertsToday = alertsToday + :one, lastAlertKey = :k, lastAlertAt = :now",
+            ConditionExpression="optedIn = :t AND alertDate = :d AND alertsToday < :max AND lastAlertKey <> :k",
+            ExpressionAttributeValues={**values, ":one": 1, ":max": max_per_day},
+        )
+        return True
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        pass
+    try:
+        # First alert of a new IST day: reset the counter.
+        table.update_item(
+            Key={"phone": phone},
+            UpdateExpression="SET alertDate = :d, alertsToday = :one, lastAlertKey = :k, lastAlertAt = :now",
+            ConditionExpression="optedIn = :t AND (attribute_not_exists(alertDate) OR alertDate <> :d)",
+            ExpressionAttributeValues={**values, ":one": 1},
         )
         return True
     except table.meta.client.exceptions.ConditionalCheckFailedException:

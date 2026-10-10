@@ -16,6 +16,30 @@ ROOT = Path(__file__).resolve().parent.parent
 WARD_FIELDS = ("lstOffset", "ndvi", "popDensity", "vulnerabilityScore")
 
 
+def ring_centroid(ring: list[list[float]]) -> tuple[float, float, float]:
+    """(signed area, cx, cy) of a closed lon/lat ring (shoelace formula; fine at ward scale)."""
+    a = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(ring, ring[1:], strict=False):
+        cross = x0 * y1 - x1 * y0
+        a += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+    a /= 2
+    if a == 0:
+        return 0.0, ring[0][0], ring[0][1]
+    return a, cx / (6 * a), cy / (6 * a)
+
+
+def centroid(geometry: dict) -> list[float]:
+    """Area-weighted centroid [lon, lat] of a Polygon or MultiPolygon (outer rings)."""
+    polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+    parts = [ring_centroid(poly[0]) for poly in polygons]
+    total = sum(abs(a) for a, _, _ in parts) or 1.0
+    lon = sum(abs(a) * x for a, x, _ in parts) / total
+    lat = sum(abs(a) * y for a, _, y in parts) / total
+    return [round(lon, 5), round(lat, 5)]
+
+
 def stack_outputs(cfn, stack: str) -> dict[str, str]:
     outputs = cfn.describe_stacks(StackName=stack)["Stacks"][0]["Outputs"]
     return {o["OutputKey"]: o["OutputValue"] for o in outputs}
@@ -64,6 +88,8 @@ def main() -> None:
                 "city": args.city,
                 "geometryS3Key": geometry_key,
                 **{k: Decimal(str(p[k])) for k in WARD_FIELDS},
+                "centroid": [Decimal(str(c)) for c in (p.get("centroid") or centroid(f["geometry"]))],
+                "fixture": bool(p.get("fixture", False)),
             }
             batch.put_item(Item=item)
 

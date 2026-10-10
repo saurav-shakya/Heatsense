@@ -1,7 +1,15 @@
 """Risk levels and score bucketing.
 
-Risk_w = H_w x V_w, both in [0, 1]. Thresholds below are placeholders; Phase 2 tunes
-them against IMD heat-index bands so Delhi's hottest recent days land in High/Extreme.
+Risk_w = H_w x V_w, both in [0, 1]. H comes from heatshield.heat (IMD heat-index bands
+and heatwave criteria); V is the ward's static vulnerability score.
+
+Thresholds are tuned so that, for a ward of median vulnerability (V ~ 0.43 in Delhi):
+  - a normal pre-monsoon afternoon (40 degC, dry) is Moderate,
+  - an IMD heatwave hour (>= 45 degC air) is High,
+  - a severe heatwave hour (>= 47 degC air, e.g. Delhi on 28-29 May 2024) is High, and
+    Extreme from V ~ 0.5 upward,
+  - an October afternoon (33 degC) stays Low.
+See tests/test_risk.py for the backtest cases.
 """
 
 from enum import StrEnum
@@ -20,9 +28,9 @@ class RiskLevel(StrEnum):
 
 # Lower bound (inclusive) of each level, highest first.
 THRESHOLDS: list[tuple[float, RiskLevel]] = [
-    (0.70, RiskLevel.EXTREME),
-    (0.50, RiskLevel.HIGH),
-    (0.30, RiskLevel.MODERATE),
+    (0.45, RiskLevel.EXTREME),
+    (0.30, RiskLevel.HIGH),
+    (0.18, RiskLevel.MODERATE),
     (0.0, RiskLevel.LOW),
 ]
 

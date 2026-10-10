@@ -34,6 +34,7 @@ def test_list_wards_returns_geojson_with_daily_summary(api, engine, ctx):
     assert resp["statusCode"] == 200
     body = json.loads(resp["body"])
     assert body["type"] == "FeatureCollection"
+    assert body["replayOf"] is None
     assert {f["id"] for f in body["features"]} == {"DL-001", "DL-002"}
     daily = body["features"][0]["properties"]["daily"]
     assert len(daily) == 4
