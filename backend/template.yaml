@@ -14,6 +14,24 @@ Parameters:
     Type: CommaDelimitedList
     Default: "https://heatshield.pages.dev,http://localhost:5173"
     Description: Browser origins allowed to call the API (Cloudflare Pages + local dev)
+  SiteUrl:
+    Type: String
+    Default: "https://heatshield.pages.dev"
+    Description: Public web map, linked from alerts and bot replies
+  ReplayDate:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^\\d{4}-\\d{2}-\\d{2}$"
+    Description: Keep scoring from a past heatwave (YYYY-MM-DD, stored in S3 replay/) instead of live forecasts
+  AdvisoryMode:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, template]
+    Description: bedrock = Claude writes advisories and bot answers; template = fixed texts only
+  AdvisoryModelId:
+    Type: String
+    Default: anthropic.claude-opus-5-5
+    Description: Claude model on Amazon Bedrock (enable access in the Bedrock console first)
 
 Globals:
   Function:
@@ -30,6 +48,11 @@ Globals:
         DATA_BUCKET: !Ref DataBucket
         EVENT_BUS_NAME: !Ref EventBus
         CITY: !Ref City
+        STAGE: !Ref Stage
+        SITE_URL: !Ref SiteUrl
+        ADVISORY_MODE: !Ref AdvisoryMode
+        ADVISORY_MODEL_ID: !Ref AdvisoryModelId
+        TWILIO_SSM_PREFIX: !Sub /heatshield/${Stage}/twilio
         POWERTOOLS_SERVICE_NAME: heatshield
         POWERTOOLS_LOG_LEVEL: INFO
 
@@ -169,6 +192,17 @@ Resources:
       FunctionName: !Sub heatshield-${Stage}-whatsapp-webhook
       CodeUri: functions/whatsapp_webhook/
       Handler: app.handler
+      Timeout: 14  # Twilio waits 15 s for a reply
+      MemorySize: 512
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref WardsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref RiskForecastsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SubscribersTable }
+        - SSMParameterReadPolicy: { ParameterName: !Sub "heatshield/${Stage}/twilio/*" }
+        - Statement:
+            - Effect: Allow
+              Action: bedrock-mantle:CreateInference
+              Resource: "*"
       Events:
         Inbound:
           Type: HttpApi
@@ -183,10 +217,13 @@ Resources:
       Handler: app.handler
       Timeout: 300
       MemorySize: 512
+      Environment:
+        Variables:
+          REPLAY_DATE: !Ref ReplayDate
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref WardsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref RiskForecastsTable }
-        - S3ReadPolicy: { BucketName: !Ref DataBucket }
+        - S3CrudPolicy: { BucketName: !Ref DataBucket }  # reads replay/, writes raw/forecasts/
         - EventBridgePutEventsPolicy: { EventBusName: !Ref EventBus }
       Events:
         Every3Hours:
@@ -201,10 +238,19 @@ Resources:
       FunctionName: !Sub heatshield-${Stage}-alert-dispatcher
       CodeUri: functions/alert_dispatcher/
       Handler: app.handler
-      Timeout: 60
+      Timeout: 300
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref WardsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref RiskForecastsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SubscribersTable }
+        - SSMParameterReadPolicy: { ParameterName: !Sub "heatshield/${Stage}/twilio/*" }
+        - Statement:
+            - Effect: Allow
+              Action: sns:Publish  # SMS to phone numbers has no topic ARN
+              Resource: "*"
+            - Effect: Allow
+              Action: bedrock-mantle:CreateInference  # Claude in Amazon Bedrock (Messages API)
+              Resource: "*"
       Events:
         ScoresUpdated:
           Type: EventBridgeRule

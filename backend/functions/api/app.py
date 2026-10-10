@@ -1,7 +1,8 @@
 """Public REST API for the map and the subscribe flow.
 
 Routes (HTTP API -> this function):
-  GET  /wards                  GeoJSON FeatureCollection, ward properties + daily risk summary
+  GET  /wards                  GeoJSON FeatureCollection, ward properties + daily risk summary;
+                               top-level replayOf is set while scores come from a past heatwave
   GET  /wards/{wardId}/forecast  hourly risk timeline (today + 3 days) for one ward
   POST /subscribe              register phone, ward, group, language, channel
   POST /unsubscribe            opt out
@@ -26,7 +27,7 @@ app = APIGatewayHttpResolver()
 
 # Indian mobile numbers in E.164 form. Widen when more countries are supported.
 PHONE_RE = re.compile(r"^\+91[6-9]\d{9}$")
-WARD_PROPS = ("wardId", "name", "lstOffset", "ndvi", "popDensity", "vulnerabilityScore", "daily")
+WARD_PROPS = ("wardId", "name", "lstOffset", "ndvi", "popDensity", "vulnerabilityScore", "daily", "fixture")
 
 
 @cache
@@ -40,6 +41,7 @@ def _ward_geometries() -> dict[str, dict]:
 @app.get("/wards", compress=True)
 def list_wards():
     geometries = _ward_geometries()
+    wards = repo.list_wards()
     features = [
         {
             "type": "Feature",
@@ -47,10 +49,11 @@ def list_wards():
             "geometry": geometries.get(ward["wardId"]),
             "properties": {k: ward.get(k) for k in WARD_PROPS},
         }
-        for ward in repo.list_wards()
+        for ward in wards
         if ward["wardId"] in geometries
     ]
-    return {"type": "FeatureCollection", "city": config.CITY, "features": features}
+    replay_of = next((w["replayOf"] for w in wards if w.get("replayOf")), None)
+    return {"type": "FeatureCollection", "city": config.CITY, "replayOf": replay_of, "features": features}
 
 
 @app.get("/wards/<ward_id>/forecast")
