@@ -18,11 +18,12 @@ from datetime import UTC, date, datetime, timedelta
 import boto3
 from aws_lambda_powertools import Logger
 
-from heatshield import config, repo, weather
-from heatshield.heat import hazard
+from heatshield import config, repo, resources, weather
+from heatshield.actions import ward_actions
+from heatshield.heat import LST_TO_AIR, hazard, is_hot_night, wbgt_c, work_minutes_per_hour
 from heatshield.models import RiskForecast
 from heatshield.risk import RiskLevel, bucket, score
-from heatshield.timeutil import IST, iso, ist_date, ist_day_start
+from heatshield.timeutil import IST, iso, ist_date, ist_day_start, ist_hour
 
 logger = Logger()
 
@@ -56,22 +57,89 @@ def build_forecasts(ward: dict, now: datetime, index: weather.WeatherIndex) -> l
                 level=bucket(risk).value,
                 generatedAt=generated,
                 expiresAt=expires,
+                airTemp=round(obs[0], 1),
+                wbgt=wbgt_c(obs[0], obs[1], sun=True),
             )
         )
     return rows
 
 
-def daily_summary(rows: list[RiskForecast]) -> list[dict]:
-    """Peak risk per IST day, stored on the ward row so GET /wards is a single scan."""
-    days: dict[str, RiskForecast] = {}
+# "Tonight" for day D runs from 21:00 on D to 06:00 on D+1 (IST).
+NIGHT_START_HOUR = 21
+NIGHT_END_HOUR = 6
+MIN_NIGHT_HOURS = 6  # fewer than this at the end of the forecast: no night figure
+
+
+def _night_min(rows: list[RiskForecast], day: str, lst_offset: float = 0.0) -> float | None:
+    """Tonight's lowest air temperature in the ward. Built-up wards hold heat most at night."""
+    next_day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+    temps = []
     for r in rows:
-        day = ist_date(r.forecastTime)
-        if day not in days or r.risk > days[day].risk:
-            days[day] = r
-    return [
-        {"date": d, "risk": r.risk, "level": r.level, "heatIndex": r.heatIndex, "peakAt": r.forecastTime}
-        for d, r in sorted(days.items())
-    ]
+        if r.airTemp is None:
+            continue
+        d, h = ist_date(r.forecastTime), ist_hour(r.forecastTime)
+        if (d == day and h >= NIGHT_START_HOUR) or (d == next_day and h < NIGHT_END_HOUR):
+            temps.append(r.airTemp)
+    if len(temps) < MIN_NIGHT_HOURS:
+        return None
+    return round(min(temps) + LST_TO_AIR * lst_offset, 1)
+
+
+WORK_DAY = (6, 20)  # IST hours [start, end) a work plan covers
+
+
+def work_plan(rows: list[RiskForecast]) -> list[dict]:
+    """Daytime hours when moderate outdoor work must be cut back, as runs of equal advice.
+
+    [{"from": 9, "to": 11, "work": 30}, {"from": 11, "to": 17, "work": 0}, ...]: minutes of work
+    per hour (the rest in shade), 0 = stop heavy work. Hours safe for normal work are left out.
+    """
+    by_hour = {
+        ist_hour(r.forecastTime): work_minutes_per_hour(r.wbgt)
+        for r in rows
+        if r.wbgt is not None and WORK_DAY[0] <= ist_hour(r.forecastTime) < WORK_DAY[1]
+    }
+    plan: list[dict] = []
+    for hour in sorted(by_hour):
+        minutes = by_hour[hour]
+        if minutes >= 60:
+            continue
+        if plan and plan[-1]["to"] == hour and plan[-1]["work"] == minutes:
+            plan[-1]["to"] = hour + 1
+        else:
+            plan.append({"from": hour, "to": hour + 1, "work": minutes})
+    return plan
+
+
+def daily_summary(rows: list[RiskForecast], ward: dict | None = None, places: list[dict] | None = None) -> list[dict]:
+    """Per IST day: peak risk, the numbers people act on (work plan, tonight's low) and ward actions.
+
+    Stored on the ward row so GET /wards is a single scan.
+    """
+    by_day: dict[str, list[RiskForecast]] = {}
+    for r in rows:
+        by_day.setdefault(ist_date(r.forecastTime), []).append(r)
+    out = []
+    for d, day_rows in sorted(by_day.items()):
+        peak = max(day_rows, key=lambda r: r.risk)
+        entry = {
+            "date": d,
+            "risk": peak.risk,
+            "level": peak.level,
+            "heatIndex": peak.heatIndex,
+            "peakAt": peak.forecastTime,
+        }
+        wbgts = [r.wbgt for r in day_rows if r.wbgt is not None]
+        if wbgts:
+            entry["wbgtMax"] = max(wbgts)
+            entry["workPlan"] = work_plan(day_rows)
+        night = _night_min(rows, d, float((ward or {}).get("lstOffset", 0)))
+        if night is not None:
+            entry["nightMin"] = night
+            entry["hotNight"] = is_hot_night(night)
+        entry["actions"] = ward_actions(entry, ward or {}, places or [])
+        out.append(entry)
+    return out
 
 
 def _s3():
@@ -126,6 +194,7 @@ def handler(event, context):
     if not index.covers(forecast_hours(now)):
         logger.warning("weather does not cover the whole forecast window", extra={"replay": replay_date or None})
 
+    places = resources.load()
     alertable = []
     scored = 0
     for ward in wards:
@@ -133,11 +202,11 @@ def handler(event, context):
         if not rows:
             continue
         repo.put_forecasts(rows)
-        summary = daily_summary(rows)
+        summary = daily_summary(rows, ward, places)
         repo.set_ward_daily(ward["wardId"], summary, replay_of=replay_date or None)
         scored += 1
         # Today or tomorrow reaching High/Extreme is what the dispatcher cares about.
-        if any(RiskLevel(d["level"]).alertable for d in summary[:2]):
+        if any(RiskLevel(d["level"]).alertable or d.get("hotNight") for d in summary[:2]):
             alertable.append(ward["wardId"])
 
     boto3.client("events").put_events(

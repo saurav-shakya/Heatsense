@@ -152,6 +152,19 @@ def claim_alert(phone: str, today: str, key: str, now_iso: str, max_per_day: int
         return False
 
 
+def set_check_in(phone: str, date: str, status: str) -> None:
+    """Record a wellbeing check-in: "asked" when an alert asks, "ok" / "help" when the person replies."""
+    _table(config.SUBSCRIBERS_TABLE).update_item(
+        Key={"phone": phone},
+        UpdateExpression="SET checkInDate = :d, checkInStatus = :s",
+        ExpressionAttributeValues={":d": date, ":s": status},
+    )
+
+
+def all_subscribers() -> list[dict]:
+    return from_ddb(_scan_all(_table(config.SUBSCRIBERS_TABLE)))
+
+
 def subscribers_for_ward(ward_id: str) -> list[dict]:
     resp = _table(config.SUBSCRIBERS_TABLE).query(
         IndexName="byWard",

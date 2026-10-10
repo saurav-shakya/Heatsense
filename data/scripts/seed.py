@@ -50,6 +50,12 @@ def main() -> None:
     parser.add_argument("--stack", default="heatshield-dev")
     parser.add_argument("--city", default="delhi")
     parser.add_argument("--file", type=Path, default=ROOT / "fixtures" / "delhi_wards.geojson")
+    parser.add_argument(
+        "--resources",
+        type=Path,
+        default=ROOT / "fixtures" / "delhi_resources.geojson",
+        help="cooling centres, water and rest points (GeoJSON points); skipped if the file is missing",
+    )
     args = parser.parse_args()
 
     session = boto3.Session()
@@ -94,6 +100,12 @@ def main() -> None:
             batch.put_item(Item=item)
 
     print(f"seeded {len(collection['features'])} wards -> s3://{bucket}/{geometry_key} + {table_name}")
+
+    if args.resources.exists():
+        key = f"resources/{args.city}.geojson"
+        body = args.resources.read_bytes()
+        session.client("s3").put_object(Bucket=bucket, Key=key, Body=body, ContentType="application/geo+json")
+        print(f"seeded {len(json.loads(body)['features'])} places -> s3://{bucket}/{key}")
 
 
 if __name__ == "__main__":

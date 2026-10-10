@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError, isLive, type Channel, type Group, type Language } from "../api/client";
+import { api, ApiError, isLive, type Channel, type Group, type Home, type Language } from "../api/client";
 import type { Strings } from "../i18n/strings";
 
 interface Props {
@@ -11,20 +11,33 @@ interface Props {
 type Status = { state: "idle" } | { state: "sending" } | { state: "done" } | { state: "error"; message: string };
 
 const GROUPS: Group[] = ["worker", "parent", "elderly"];
+const HOMES: Home[] = ["pucca", "tin"];
+
+/** "98765 43210" or "+91 98765 43210" -> "+919876543210". */
+const toE164 = (raw: string) => `+91${raw.replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "")}`;
 
 export default function SubscribeForm({ wardId, lang, t }: Props) {
   const [phone, setPhone] = useState("");
   const [group, setGroup] = useState<Group>("worker");
   const [language, setLanguage] = useState<Language>(lang);
   const [channel, setChannel] = useState<Channel>("whatsapp");
+  const [home, setHome] = useState<Home | null>(null);
+  const [caregiver, setCaregiver] = useState("");
   const [status, setStatus] = useState<Status>({ state: "idle" });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setStatus({ state: "sending" });
-    const digits = phone.replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "");
     try {
-      await api.subscribe({ phone: `+91${digits}`, wardId, group, language, channel });
+      await api.subscribe({
+        phone: toE164(phone),
+        wardId,
+        group,
+        language,
+        channel,
+        ...(home ? { home } : {}),
+        ...(caregiver.trim() ? { caregiverPhone: toE164(caregiver) } : {}),
+      });
       setStatus({ state: "done" });
     } catch (err) {
       setStatus({ state: "error", message: err instanceof ApiError ? err.message : t.loadFailed });
@@ -76,6 +89,38 @@ export default function SubscribeForm({ wardId, lang, t }: Props) {
           </label>
         ))}
       </fieldset>
+
+      <fieldset className="field">
+        <legend className="label">{t.roofQuestion}</legend>
+        {HOMES.map((h) => (
+          <label key={h} className="choice">
+            <input type="radio" name="home" checked={home === h} onChange={() => setHome(h)} />
+            {t.roofs[h]}
+          </label>
+        ))}
+        <span className="hint">{t.roofHint}</span>
+      </fieldset>
+
+      {group === "elderly" && (
+        <label className="field">
+          <span className="label">{t.caregiver}</span>
+          <span className="phone-input">
+            <span className="phone-prefix">+91</span>
+            <input
+              type="tel"
+              inputMode="numeric"
+              autoComplete="off"
+              pattern="[0-9 ]{10,12}"
+              value={caregiver}
+              onChange={(e) => setCaregiver(e.target.value)}
+              aria-describedby="caregiver-hint"
+            />
+          </span>
+          <span id="caregiver-hint" className="hint">
+            {t.caregiverHint}
+          </span>
+        </label>
+      )}
 
       <div className="field-row">
         <fieldset className="field">

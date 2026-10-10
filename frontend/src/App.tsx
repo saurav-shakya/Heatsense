@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { api, type Language, type WardCollection } from "./api/client";
+import { api, type Language, type PlaceCollection, type WardCollection } from "./api/client";
 import DayPicker from "./components/DayPicker";
 import RiskLegend from "./components/RiskLegend";
 import TopWards from "./components/TopWards";
 import WardPanel from "./components/WardPanel";
 import { STRINGS } from "./i18n/strings";
 import { dayLabel, hourLabel, istDate, todayLong } from "./lib/format";
+import { centroid, nearestPlaces } from "./lib/geo";
 
 // MapLibre is most of the bundle: load it after the headline and ranked list have rendered.
 const WardMap = lazy(() => import("./components/WardMap"));
@@ -27,6 +28,7 @@ export default function App() {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [day, setDay] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [places, setPlaces] = useState<PlaceCollection | null>(null);
   const t = STRINGS[lang];
 
   const fetchWards = useCallback(() => {
@@ -38,6 +40,12 @@ export default function App() {
   }, []);
 
   useEffect(fetchWards, [fetchWards]);
+
+  // Cooling centres and water points are a nice-to-have: the map works without them.
+  useEffect(() => {
+    if (load.state !== "ready") return;
+    api.resources().then(setPlaces).catch(() => setPlaces(null));
+  }, [load.state]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -61,6 +69,11 @@ export default function App() {
     [wards, day],
   );
   const selectedWard = wards.find((w) => w.wardId === selected) ?? null;
+  const selectedFeature = load.state === "ready" ? load.data.features.find((f) => f.id === selected) : undefined;
+  const nearSelected = useMemo(
+    () => (selectedFeature ? nearestPlaces(places, centroid(selectedFeature.geometry)) : []),
+    [places, selectedFeature],
+  );
   const replayOf = load.state === "ready" ? load.data.replayOf : null;
   const snapshotAt = load.state === "ready" ? load.data.snapshotAt : undefined;
   const isSample = wards.some((w) => w.fixture);
@@ -125,6 +138,7 @@ export default function App() {
                   day={day}
                   lang={lang}
                   t={t}
+                  places={nearSelected}
                   onBack={() => setSelected(null)}
                 />
               ) : (
@@ -139,7 +153,7 @@ export default function App() {
         <div className="map-area">
           {load.state === "ready" && (
             <Suspense fallback={<p className="map-loading">{t.mapLoading}</p>}>
-              <WardMap data={load.data} day={day} selected={selected} onSelect={setSelected} t={t} />
+              <WardMap data={load.data} places={places} day={day} selected={selected} onSelect={setSelected} t={t} />
             </Suspense>
           )}
         </div>

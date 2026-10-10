@@ -18,7 +18,8 @@ from heatshield import config
 
 logger = Logger(child=True)
 
-WHATSAPP_MAX = 300  # whole message
+WHATSAPP_MAX = 300  # headline + advice + footer
+WHATSAPP_FULL_MAX = 900  # with the personal lines below (Twilio allows 1600)
 ADVICE_MAX = 170  # the Claude-written part, leaves room for the headline and footer
 SMS_MAX = {"en": 160, "hi": 134}  # one GSM-7 segment / two UCS-2 segments
 DEVANAGARI = re.compile(r"[ऀ-ॿ]")
@@ -223,11 +224,89 @@ class Advisor:
         return fallback
 
 
-def whatsapp_message(ward_name: str, day: int, level: str, felt: float, advice: str, lang: str) -> str:
-    msg = f"{headline(ward_name, day, level, felt, lang)} {advice} {FOOTER[lang]}"
-    if len(msg) > WHATSAPP_MAX:  # very long ward name: drop the felt temperature detail
-        msg = f"{headline(ward_name[:40], day, level, felt, lang)} {advice} {FOOTER[lang]}"
-    return msg
+def whatsapp_message(
+    ward_name: str, day: int, level: str, felt: float, advice: str, lang: str, extras: list[str] | None = None
+) -> str:
+    """Headline, advice, then any personal lines (work plan, tonight, nearest place, check-in), then STOP."""
+    msg = f"{headline(ward_name, day, level, felt, lang)} {advice}"
+    if len(msg) + len(FOOTER[lang]) + 1 > WHATSAPP_MAX:  # very long ward name: shorten it
+        msg = f"{headline(ward_name[:40], day, level, felt, lang)} {advice}"
+    if not extras:
+        return f"{msg} {FOOTER[lang]}"
+    lines = [msg]
+    for line in extras:
+        if sum(len(x) + 1 for x in lines) + len(line) + len(FOOTER[lang]) + 1 > WHATSAPP_FULL_MAX:
+            break
+        lines.append(line)
+    return "\n".join([*lines, FOOTER[lang]])
+
+
+# --------------------------------------------------------------------------- personal lines
+#
+# Short, fixed sentences added under the advice. They carry numbers the generic advice can't:
+# the hours to stop work, tonight's low, where to go. Never written by the model.
+
+
+def work_plan_line(plan: list[dict], wbgt_max: float | None, lang: str) -> str | None:
+    """Stop-work hours and a work-rest ratio for the other hot hours, from a day's workPlan."""
+    if not plan:
+        return None
+    stops = [seg for seg in plan if seg["work"] == 0]
+    partial = [seg["work"] for seg in plan if seg["work"] > 0]
+    parts = []
+    if stops:
+        window = format_window(stops[0]["from"], stops[-1]["to"], lang)
+        wbgt = f" (WBGT {round(wbgt_max)}°C)" if wbgt_max is not None else ""
+        parts.append(
+            f"{window} बाहर भारी काम बंद रखें{wbgt}।" if lang == "hi" else f"Stop heavy outdoor work {window}{wbgt}."
+        )
+    if partial:
+        work = min(partial)
+        rest = 60 - work
+        if lang == "hi":
+            parts.append(f"बाकी गर्म घंटों में हर घंटे {work} मिनट काम, {rest} मिनट छांव में आराम।")
+        else:
+            other = "In the other hot hours" if stops else "In the hot hours"
+            parts.append(f"{other}, work {work} min and rest {rest} min in shade each hour.")
+    text = " ".join(parts)
+    return text[0].upper() + text[1:]
+
+
+def night_line(night_min: float, lang: str) -> str:
+    if lang == "hi":
+        return (
+            f"आज रात तापमान {round(night_min)}°C से नीचे नहीं जाएगा: सबसे ठंडी जगह सोएं, पानी पास रखें, गीले कपड़े से शरीर ठंडा करें।"
+        )
+    return (
+        f"Tonight stays above {round(night_min)}°C: sleep in the coolest spot, keep water by the bed, "
+        "cool down with a wet cloth."
+    )
+
+
+def roof_line(window: str, lang: str) -> str:
+    if lang == "hi":
+        return f"{window} टीन या शीट की छत वाला कमरा बाहर से भी ज़्यादा गर्म होता है: उस समय छांव या ठंडी जगह पर रहें।"
+    return (
+        f"Rooms under tin or sheet roofs get hotter than outside {window}: spend those hours in shade or a cool place."
+    )
+
+
+PLACE_INTRO = {
+    "cooling": {"en": "Nearest cool place", "hi": "सबसे पास ठंडी जगह"},
+    "water": {"en": "Nearest drinking water", "hi": "सबसे पास पीने का पानी"},
+    "rest": {"en": "Nearest shaded rest point", "hi": "सबसे पास छांव में आराम की जगह"},
+}
+
+
+def place_line(kind: str, place_label: str, lang: str) -> str:
+    return f"{PLACE_INTRO[kind][lang]}: {place_label}{'।' if lang == 'hi' else '.'}"
+
+
+# SOS rather than HELP: carriers and Twilio treat HELP as a reserved keyword on some routes.
+CHECK_IN = {
+    "en": "Reply OK if you are fine, or SOS if you need help. HeatShield never asks for money or OTPs.",
+    "hi": "ठीक हैं तो OK, मदद चाहिए तो SOS या मदद लिखें। HeatShield कभी पैसे या OTP नहीं मांगता।",
+}
 
 
 SMS_TEMPLATES = {

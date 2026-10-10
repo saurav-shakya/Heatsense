@@ -72,3 +72,53 @@ def test_subscribe_rejects_bad_input(api, ctx, patch):
     sub = {"phone": "+919876543210", "wardId": "DL-001", "group": "worker", "language": "hi", "channel": "whatsapp"}
     resp = api.handler(http_event("POST", "/subscribe", {**sub, **patch}), ctx)
     assert resp["statusCode"] == 400
+
+
+def test_subscribe_with_thin_roof_and_caregiver(api, ctx):
+    from heatshield import repo
+
+    sub = {
+        "phone": "+919876543210",
+        "wardId": "DL-001",
+        "group": "elderly",
+        "language": "hi",
+        "channel": "whatsapp",
+        "home": "tin",
+        "caregiverPhone": "+91 98111 11111",
+    }
+    assert api.handler(http_event("POST", "/subscribe", sub), ctx)["statusCode"] == 201
+    stored = repo.get_subscriber("+919876543210")
+    assert stored["home"] == "tin" and stored["caregiverPhone"] == "+919811111111"
+
+
+@pytest.mark.parametrize("patch", [{"home": "castle"}, {"caregiverPhone": "123"}, {"caregiverPhone": "+919876543210"}])
+def test_subscribe_rejects_bad_profile(api, ctx, patch):
+    sub = {"phone": "+919876543210", "wardId": "DL-001", "group": "elderly", "language": "hi", "channel": "whatsapp"}
+    assert api.handler(http_event("POST", "/subscribe", {**sub, **patch}), ctx)["statusCode"] == 400
+
+
+def test_resources_lists_points_including_samples(api, ctx):
+    from conftest import put_resources
+
+    put_resources()
+    body = json.loads(api.handler(http_event("GET", "/resources"), ctx)["body"])
+    assert {f["id"] for f in body["features"]} == {"CC-1", "W-1", "S-1"}
+    sample = next(f for f in body["features"] if f["id"] == "S-1")
+    assert sample["properties"]["verified"] is False and sample["geometry"]["type"] == "Point"
+
+
+def test_officer_checkins_are_counts_without_phone_numbers(api, ctx):
+    from heatshield import repo
+    from heatshield.models import Channel, Group, Language, Subscriber
+
+    for i, status in enumerate(["asked", "ok", "help", "asked"]):
+        phone = f"+91980000001{i}"
+        repo.put_subscriber(Subscriber(phone, "DL-001", Group.ELDERLY, Language.HI, Channel.WHATSAPP))
+        repo.set_check_in(phone, "2026-05-28", status)
+    event = http_event("GET", "/officer/checkins")
+    event["rawQueryString"] = "date=2026-05-28"
+    event["queryStringParameters"] = {"date": "2026-05-28"}
+    resp = api.handler(event, ctx)
+    body = json.loads(resp["body"])
+    assert body["wards"] == [{"wardId": "DL-001", "asked": 4, "ok": 1, "help": 1, "noReply": 2}]
+    assert "+91" not in resp["body"]

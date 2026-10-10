@@ -428,3 +428,45 @@
   color: var(--ink-2);
   font-size: var(--t-sm);
 }
+
+/* Work plan, tonight, nearby places, ward checklist */
+.plain-list, .checklist, .places { list-style: none; margin: 0; padding: 0; }
+.plain-list li { padding: var(--space-1) 0; }
+.plain-list li.is-stop { font-weight: 600; }
+.is-warning { font-weight: 500; }
+.checklist li { position: relative; padding: var(--space-1) 0 var(--space-1) var(--space-5); }
+.checklist li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: calc(var(--space-1) + 0.45em);
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--ink-2);
+  border-radius: 2px;
+}
+.places li {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  column-gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.places li:last-child { border-bottom: 0; }
+.place-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 0.5em; grid-row: span 2; }
+.place-cooling { background: var(--place-cooling); }
+.place-water { background: var(--place-water); }
+.place-rest { background: var(--place-rest); }
+.place-name { font-weight: 500; }
+.place-meta { color: var(--ink-2); font-size: var(--t-sm); }
+.tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: var(--t-xs);
+  font-weight: 400;
+  color: var(--ink-2);
+  vertical-align: 1px;
+}

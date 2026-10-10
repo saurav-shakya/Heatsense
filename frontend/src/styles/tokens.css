@@ -26,6 +26,10 @@
   --on-risk-high: #f6f4ef;
   --on-risk-extreme: #f6f4ef;
 
+  --place-cooling: #2c3e73;
+  --place-water: #1f6f8b;
+  --place-rest: #4d6b3a;
+
   --font-sans: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif;
   --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans Devanagari", "IBM Plex Sans", sans-serif;
 

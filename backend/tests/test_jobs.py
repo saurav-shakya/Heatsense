@@ -14,9 +14,21 @@ def engine(aws):
     return load_function("risk_engine")
 
 
-def test_engine_scores_every_ward_and_flags_vulnerable_one(engine, ctx):
+def test_engine_scores_every_ward_and_flags_vulnerable_one(engine, ctx, monkeypatch):
+    # Hot day, nights cooling to 26 degC: only the hot, vulnerable ward reaches High.
+    monkeypatch.setattr(weather, "_get_json", fake_open_meteo(peak_c=44.0, rh=20.0, night_c=26.0))
     result = engine.handler({}, ctx)
     assert result["wards"] == 2 and result["alertable"] == 1  # DL-001 is hot + vulnerable, DL-002 is not
+
+
+def test_hot_night_flags_every_ward_for_people_at_home(engine, ctx):
+    from heatshield import repo
+
+    # Default weather: 44 degC afternoons, nights that only fall to 32 degC.
+    assert engine.handler({}, ctx)["alertable"] == 2
+    day = repo.get_ward("DL-002")["daily"][0]
+    assert day["hotNight"] is True and day["nightMin"] >= 30
+    assert "night_shelter" in day["actions"]
 
 
 def test_engine_forecast_starts_at_ist_midnight(engine):
@@ -148,7 +160,8 @@ def test_sends_to_subscribers_of_risky_wards_only(engine, dispatcher, outbox, ct
     channels = {phone: (kind, body) for kind, phone, body in outbox}
     assert set(channels) == {"+919800000001", "+919800000002"}
     wa = channels["+919800000001"][1]
-    assert "Sample A" in wa and wa.endswith("STOP भेजें।") and len(wa) <= 300
+    assert "Sample A" in wa and wa.endswith("STOP भेजें।") and len(wa) <= 900
+    assert "WBGT" in wa and "मिनट काम" in wa  # outdoor worker gets the stop-work hours and work-rest ratio
     assert channels["+919800000002"][0] == "sms" and "STOP" in channels["+919800000002"][1]
 
 
@@ -200,3 +213,83 @@ def test_handler_skips_quiet_hours_and_reports_counts(dispatcher, ctx, monkeypat
 
     monkeypatch.setattr(dispatcher, "datetime", Clock)
     assert dispatcher.handler({}, ctx) == {"sent": 0, "skipped": "quiet-hours"}
+
+
+# --------------------------------------------------------------------------- personal alerts
+
+
+def test_tin_roof_subscriber_is_alerted_in_a_moderate_ward(engine, dispatcher, outbox, ctx, monkeypatch):
+    from heatshield import repo
+    from heatshield.advisory import Advisor
+    from heatshield.models import Channel, Group, Home, Language, Subscriber
+
+    monkeypatch.setattr(weather, "_get_json", fake_open_meteo(peak_c=44.0, rh=20.0, night_c=26.0))
+    engine.handler({}, ctx)
+    ward = repo.get_ward("DL-002")
+    ward["daily"][0]["level"] = "moderate"
+    repo.set_ward_daily("DL-002", ward["daily"])
+    subscribe("+919800000004", ward="DL-002", group="worker")
+
+    repo.put_subscriber(
+        Subscriber(
+            phone="+919800000005",
+            wardId="DL-002",
+            group=Group.WORKER,
+            language=Language.EN,
+            channel=Channel.WHATSAPP,
+            home=Home.TIN,
+        )
+    )
+    counts = dispatcher.dispatch(ist_time_today(7), Advisor(mode="template"))
+    assert counts["sent"] == 1
+    (kind, phone, body), *_ = outbox
+    assert phone == "+919800000005"
+    assert body.startswith("HeatShield: HIGH heat risk in Sample B")
+    assert "tin or sheet roofs" in body
+
+
+def test_elderly_alert_has_place_night_and_check_in(engine, dispatcher, outbox, ctx):
+    from conftest import put_resources
+
+    from heatshield import repo
+    from heatshield.advisory import Advisor
+
+    put_resources()
+    engine.handler({}, ctx)  # default weather: 44 degC days, nights at 32 degC
+    subscribe("+919800000006", group="elderly", language="en")
+    dispatcher.dispatch(ist_time_today(7), Advisor(mode="template"))
+    (_, _, body), *_ = outbox
+    assert "Nearest cool place: Community Hall Cool Room" in body
+    assert "Sample point" not in body  # unverified places never reach alerts
+    assert "Tonight stays above" in body
+    assert "Reply OK if you are fine, or SOS" in body
+    sub = repo.get_subscriber("+919800000006")
+    assert sub["checkInStatus"] == "asked"
+
+
+def test_worker_gets_water_point_not_check_in(engine, dispatcher, outbox, ctx):
+    from conftest import put_resources
+
+    from heatshield.advisory import Advisor
+
+    put_resources()
+    engine.handler({}, ctx)
+    subscribe("+919800000007", group="worker", language="en")
+    dispatcher.dispatch(ist_time_today(7), Advisor(mode="template"))
+    (_, _, body), *_ = outbox
+    assert "Nearest drinking water: Water ATM" in body
+    assert "Stop heavy outdoor work" in body
+    assert "SOS" not in body and "Tonight" not in body
+
+
+def test_engine_summary_has_work_plan_and_actions(engine, ctx):
+    from heatshield import repo
+
+    engine.handler({}, ctx)
+    today = repo.get_ward("DL-001")["daily"][0]
+    assert today["wbgtMax"] > 31.5
+    assert any(seg["work"] == 0 for seg in today["workPlan"])
+    assert all(6 <= seg["from"] < seg["to"] <= 20 for seg in today["workPlan"])
+    assert {"open_cooling", "shift_work", "night_shelter"} <= set(today["actions"])
+    hourly = repo.get_forecast("DL-001", "0", "9")
+    assert {"airTemp", "wbgt"} <= hourly[0].keys()

@@ -2,19 +2,23 @@ import { useEffect, useState } from "react";
 import { api, type HourlyRisk, type Language, type WardProps } from "../api/client";
 import type { Strings } from "../i18n/strings";
 import { hourLabel, istDate } from "../lib/format";
+import type { NearPlace } from "../lib/geo";
 import HourlyStrip from "./HourlyStrip";
 import LevelChip from "./LevelChip";
+import NearbyPlaces from "./NearbyPlaces";
 import SubscribeForm from "./SubscribeForm";
+import WorkPlan from "./WorkPlan";
 
 interface Props {
   ward: WardProps;
   day: number;
   lang: Language;
   t: Strings;
+  places: NearPlace[];
   onBack: () => void;
 }
 
-export default function WardPanel({ ward, day, lang, t, onBack }: Props) {
+export default function WardPanel({ ward, day, lang, t, places, onBack }: Props) {
   const [hourly, setHourly] = useState<HourlyRisk[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -51,6 +55,44 @@ export default function WardPanel({ ward, day, lang, t, onBack }: Props) {
         </h3>
         {failed ? <p className="section-note">{t.loadFailed}</p> : <HourlyStrip hours={hours} lang={lang} t={t} />}
       </section>
+
+      {today?.workPlan && (
+        <section aria-labelledby="work-title">
+          <h3 id="work-title" className="label">
+            {t.workTitle}
+          </h3>
+          <WorkPlan day={today} lang={lang} t={t} />
+        </section>
+      )}
+
+      {today?.nightMin !== undefined && (
+        <section aria-labelledby="night-title">
+          <h3 id="night-title" className="label">
+            {t.nightTitle}
+          </h3>
+          <p className={today.hotNight ? "is-warning" : undefined}>{t.nightValue(today.nightMin, !!today.hotNight)}</p>
+        </section>
+      )}
+
+      <section aria-labelledby="places-title">
+        <h3 id="places-title" className="label">
+          {t.placesTitle}
+        </h3>
+        <NearbyPlaces places={places} lang={lang} t={t} />
+      </section>
+
+      {today?.actions && today.actions.length > 0 && (
+        <section aria-labelledby="actions-title">
+          <h3 id="actions-title" className="label">
+            {t.actionsTitle}
+          </h3>
+          <ul className="checklist">
+            {today.actions.map((a) => (
+              <li key={a}>{t.actions[a]}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-labelledby="why-title">
         <h3 id="why-title" className="label">

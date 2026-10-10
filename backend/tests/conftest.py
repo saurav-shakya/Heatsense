@@ -52,18 +52,20 @@ SAMPLE_WARDS = [
 ]
 
 
-def fake_open_meteo(peak_c: float = 44.0, rh: float = 20.0):
+def fake_open_meteo(peak_c: float = 44.0, rh: float = 20.0, night_c: float | None = None):
     """Stand-in for weather._get_json: an Open-Meteo-shaped multi-location response for the asked dates.
 
-    Air temperature follows a diurnal curve peaking at peak_c around 14:00 IST (08:30 UTC).
+    Air temperature follows a diurnal curve peaking at peak_c around 14:00 IST (08:30 UTC) and
+    bottoming out at night_c (default peak_c - 12) overnight.
     """
+    low = peak_c - 12 if night_c is None else night_c
 
     def get_json(url: str, params: dict) -> object:
         start = datetime.strptime(params["start_date"], "%Y-%m-%d")
         end = datetime.strptime(params["end_date"], "%Y-%m-%d") + timedelta(days=1)
         hours = [start + timedelta(hours=h) for h in range(int((end - start).total_seconds() // 3600))]
         temps = [
-            round(peak_c - 12 + 12 * max(0.0, math.sin(math.pi * ((t.hour + 5.5) % 24 - 6) / 16)), 1) for t in hours
+            round(low + (peak_c - low) * max(0.0, math.sin(math.pi * ((t.hour + 5.5) % 24 - 6) / 16)), 1) for t in hours
         ]
         location = {
             "latitude": 28.625,
@@ -103,6 +105,44 @@ class _RefusingClient:
         from types import SimpleNamespace
 
         return SimpleNamespace(stop_reason="refusal", content=[])
+
+
+# Near Sample A (DL-001, centroid 77.23, 28.66): one verified cooling centre ~0.6 km away,
+# one verified water point, and an unverified sample that must never reach an alert.
+SAMPLE_RESOURCES = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [77.235, 28.664]},
+            "properties": {
+                "id": "CC-1",
+                "name": "Community Hall Cool Room",
+                "nameHi": "सामुदायिक भवन ठंडा कमरा",
+                "kind": "cooling",
+                "hours": [10, 19],
+                "verified": True,
+            },
+        },
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [77.228, 28.662]},
+            "properties": {"id": "W-1", "name": "Water ATM", "kind": "water", "verified": True},
+        },
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [77.2301, 28.6601]},
+            "properties": {"id": "S-1", "name": "Sample point", "kind": "cooling", "verified": False},
+        },
+    ],
+}
+
+
+def put_resources():
+    from heatshield import resources
+
+    boto3.client("s3").put_object(Bucket="data", Key="resources/delhi.geojson", Body=json.dumps(SAMPLE_RESOURCES))
+    resources.load.cache_clear()
 
 
 @pytest.fixture
@@ -145,10 +185,11 @@ def aws():
         )
         boto3.client("events").create_event_bus(Name="heatshield-test")
 
-        from heatshield import messaging, repo
+        from heatshield import messaging, repo, resources
         from heatshield.models import Ward
 
         repo._ddb.cache_clear()
+        resources.load.cache_clear()
         messaging.twilio_credentials.cache_clear()
         repo.put_wards(
             [
@@ -169,3 +210,4 @@ def aws():
         s3.put_object(Bucket="data", Key="wards/delhi.geojson", Body=json.dumps(geo))
         yield
         repo._ddb.cache_clear()
+        resources.load.cache_clear()

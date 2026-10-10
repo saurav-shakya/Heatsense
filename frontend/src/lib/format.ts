@@ -31,3 +31,20 @@ export function todayLong(lang: Language): string {
     timeZone: IST,
   });
 }
+
+const hiPart = (h: number) => (h >= 4 && h < 12 ? "सुबह" : h >= 12 && h < 16 ? "दोपहर" : h >= 16 && h < 19 ? "शाम" : "रात");
+
+/** IST hour (0-24) -> "2 pm" / "दोपहर 2 बजे", for work plans and opening hours (same words as the alerts). */
+export function clockLabel(hour: number, lang: Language): string {
+  if (lang === "hi") return `${hiPart(hour % 24)} ${hour % 12 || 12} बजे`;
+  const d = new Date(Date.UTC(2026, 0, 1, hour % 24, 0) - 5.5 * 3_600_000);
+  return d.toLocaleTimeString(locale(lang), { hour: "numeric", timeZone: IST });
+}
+
+/** IST hours [from, to) -> "11 am to 5 pm". */
+export function hourRange(from: number, to: number, lang: Language): string {
+  // The end hour is exclusive, so name its part of day from the hour before: 12-4 pm is all दोपहर.
+  return lang === "hi"
+    ? `${hiPart(from % 24)} ${from % 12 || 12} से ${hiPart((to - 1) % 24)} ${to % 12 || 12} बजे तक`
+    : `${clockLabel(from, lang)} to ${clockLabel(to, lang)}`;
+}

@@ -7,8 +7,9 @@ is unreachable), so the map can be hosted on its own, e.g. on Vercel. It uses th
 as the risk engine Lambda, but needs no AWS account: weather comes straight from Open-Meteo.
 --replay scores from a past heatwave shifted onto today instead of the live forecast.
 
-Writes frontend/public/snapshot/wards.json (the GET /wards shape) and
-frontend/public/snapshot/forecast/<wardId>.json (the GET /wards/{id}/forecast shape).
+Writes frontend/public/snapshot/wards.json (the GET /wards shape),
+frontend/public/snapshot/forecast/<wardId>.json (the GET /wards/{id}/forecast shape) and
+frontend/public/snapshot/resources.json (the GET /resources shape).
 """
 
 import argparse
@@ -25,7 +26,7 @@ sys.path.insert(0, str(REPO / "backend" / "functions" / "risk_engine"))
 from app import build_forecasts, daily_summary, forecast_hours  # noqa: E402
 from seed import centroid  # noqa: E402
 
-from heatshield import config, weather  # noqa: E402
+from heatshield import config, resources, weather  # noqa: E402
 from heatshield.timeutil import IST, iso, ist_day_start  # noqa: E402
 
 WARD_PROPS = ("wardId", "name", "lstOffset", "ndvi", "popDensity", "vulnerabilityScore", "fixture")
@@ -45,6 +46,7 @@ def main() -> None:
     parser.add_argument("--file", type=Path, default=ROOT / "fixtures" / "delhi_wards.geojson")
     parser.add_argument("--out", type=Path, default=REPO / "frontend" / "public" / "snapshot")
     parser.add_argument("--replay", default="", help="score from this past heatwave (YYYY-MM-DD) instead")
+    parser.add_argument("--resources", type=Path, default=ROOT / "fixtures" / "delhi_resources.geojson")
     args = parser.parse_args()
 
     now = datetime.now(UTC)
@@ -56,13 +58,23 @@ def main() -> None:
     if not index.covers(forecast_hours(now)):
         print("warning: weather does not cover the whole forecast window", file=sys.stderr)
 
+    places_geojson = (
+        json.loads(args.resources.read_text())
+        if args.resources.exists()
+        else {"type": "FeatureCollection", "features": []}
+    )
+    places = resources.from_geojson(places_geojson)
+
     (args.out / "forecast").mkdir(parents=True, exist_ok=True)
     out_features = []
     for feature, ward in zip(features, wards, strict=True):
         rows = build_forecasts(ward, now, index)
         props = {k: ward[k] for k in WARD_PROPS if k in ward}
-        props["daily"] = daily_summary(rows) or None
-        hourly = [{k: getattr(r, k) for k in ("forecastTime", "heatIndex", "hazard", "risk", "level")} for r in rows]
+        props["daily"] = daily_summary(rows, ward, places) or None
+        hourly = [
+            {k: getattr(r, k) for k in ("forecastTime", "heatIndex", "hazard", "risk", "level", "airTemp", "wbgt")}
+            for r in rows
+        ]
         out_features.append(
             {"type": "Feature", "id": ward["wardId"], "geometry": feature["geometry"], "properties": props}
         )
@@ -78,6 +90,11 @@ def main() -> None:
         "features": out_features,
     }
     (args.out / "wards.json").write_text(json.dumps(collection, separators=(",", ":")))
+    for f in places_geojson["features"]:
+        f.setdefault("id", f["properties"].get("id"))
+    (args.out / "resources.json").write_text(
+        json.dumps({**places_geojson, "city": config.CITY}, ensure_ascii=False, separators=(",", ":"))
+    )
     scored = sum(1 for f in out_features if f["properties"]["daily"])
     print(f"scored {scored}/{len(out_features)} wards -> {args.out}")
 
