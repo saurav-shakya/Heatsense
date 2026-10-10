@@ -185,6 +185,12 @@ Resources:
         Unsubscribe:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Method: POST, Path: /unsubscribe }
+        Resources:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: /resources }
+        CheckIns:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: /officer/checkins }
 
   WhatsAppWebhookFunction:
     Type: AWS::Serverless::Function
@@ -199,9 +205,13 @@ Resources:
         - DynamoDBReadPolicy: { TableName: !Ref RiskForecastsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SubscribersTable }
         - SSMParameterReadPolicy: { ParameterName: !Sub "heatshield/${Stage}/twilio/*" }
+        - S3ReadPolicy: { BucketName: !Ref DataBucket }  # resources/ for the nearest cool place
         - Statement:
             - Effect: Allow
               Action: bedrock-mantle:CreateInference
+              Resource: "*"
+            - Effect: Allow
+              Action: sns:Publish  # SMS to a caregiver when WhatsApp fails
               Resource: "*"
       Events:
         Inbound:
@@ -244,6 +254,7 @@ Resources:
         - DynamoDBReadPolicy: { TableName: !Ref RiskForecastsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SubscribersTable }
         - SSMParameterReadPolicy: { ParameterName: !Sub "heatshield/${Stage}/twilio/*" }
+        - S3ReadPolicy: { BucketName: !Ref DataBucket }  # resources/ for the nearest cool place
         - Statement:
             - Effect: Allow
               Action: sns:Publish  # SMS to phone numbers has no topic ARN

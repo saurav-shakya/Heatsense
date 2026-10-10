@@ -1,9 +1,19 @@
 // Typed client for the HeatShield HTTP API (backend/functions/api/app.py).
 
-import type { Polygon } from "geojson";
+import type { Point, Polygon } from "geojson";
 
 export type RiskLevel = "low" | "moderate" | "high" | "extreme";
 export const LEVELS: RiskLevel[] = ["low", "moderate", "high", "extreme"];
+
+/** Daytime IST hours [from, to) when outdoor work must be cut to `work` minutes an hour (0 = stop). */
+export interface WorkSegment {
+  from: number;
+  to: number;
+  work: number;
+}
+
+/** What the ward office should do; strings.ts turns each code into a sentence. */
+export type ActionCode = "open_cooling" | "shift_work" | "check_vulnerable" | "night_shelter" | "cooling_gap";
 
 export interface DailyRisk {
   date: string; // IST calendar date, YYYY-MM-DD
@@ -11,6 +21,12 @@ export interface DailyRisk {
   level: RiskLevel;
   heatIndex: number; // deg C at the peak hour
   peakAt: string; // UTC ISO of the peak hour
+  // Added with the body-heat model; missing from snapshots made before it.
+  wbgtMax?: number; // deg C, estimated WBGT in full sun at the day's worst hour
+  workPlan?: WorkSegment[];
+  nightMin?: number; // deg C, tonight's low in the ward
+  hotNight?: boolean;
+  actions?: ActionCode[];
 }
 
 export interface WardProps {
@@ -43,6 +59,24 @@ export interface HourlyRisk {
   hazard: number;
   risk: number;
   level: RiskLevel;
+  airTemp?: number;
+  wbgt?: number;
+}
+
+export type PlaceKind = "cooling" | "water" | "rest";
+
+export interface Place {
+  id: string;
+  name: string;
+  nameHi?: string;
+  kind: PlaceKind;
+  hours?: [number, number]; // IST [open, close); missing = always open
+  verified: boolean; // false = sample point, never used in alerts
+}
+
+export interface PlaceCollection {
+  type: "FeatureCollection";
+  features: Array<{ type: "Feature"; id: string; geometry: Point; properties: Place }>;
 }
 
 export interface WardForecast {
@@ -53,6 +87,7 @@ export interface WardForecast {
 export type Group = "worker" | "parent" | "elderly";
 export type Language = "en" | "hi";
 export type Channel = "whatsapp" | "sms";
+export type Home = "pucca" | "tin";
 
 export interface Subscription {
   phone: string;
@@ -60,6 +95,8 @@ export interface Subscription {
   group: Group;
   language: Language;
   channel: Channel;
+  home?: Home;
+  caregiverPhone?: string;
 }
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -110,5 +147,6 @@ export const api = {
     useSnapshot
       ? snapshot<WardForecast>(`forecast/${encodeURIComponent(wardId)}.json`)
       : request<WardForecast>(`/wards/${encodeURIComponent(wardId)}/forecast`),
+  resources: () => (useSnapshot ? snapshot<PlaceCollection>("resources.json") : request<PlaceCollection>("/resources")),
   subscribe: (sub: Subscription) => request<{ ok: true }>("/subscribe", { method: "POST", body: JSON.stringify(sub) }),
 };

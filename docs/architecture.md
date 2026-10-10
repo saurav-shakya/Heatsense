@@ -34,9 +34,13 @@ flowchart TD
 
 | Table | PK | SK | Fields |
 |---|---|---|---|
-| `heatshield-dev-wards` | `wardId` | | name, city, geometryS3Key, centroid `[lon, lat]`, fixture, lstOffset, ndvi, popDensity, vulnerabilityScore, **daily** (per-day peak summary written by the risk engine), replayOf (set while replaying) |
-| `heatshield-dev-risk-forecasts` | `wardId` | `forecastTime` (UTC ISO hour) | heatIndex, hazard, risk, level, generatedAt, expiresAt (TTL, 5 days) |
-| `heatshield-dev-subscribers` | `phone` (E.164) | | wardId, group, language, channel, optedIn, createdAt, lastAlertAt, alertDate, alertsToday, lastAlertKey. GSI `byWard` on wardId. Retained on stack delete. |
+| `heatshield-dev-wards` | `wardId` | | name, city, geometryS3Key, centroid `[lon, lat]`, fixture, lstOffset, ndvi, popDensity, vulnerabilityScore, **daily** (per-day summary written by the risk engine, see below), replayOf (set while replaying) |
+| `heatshield-dev-risk-forecasts` | `wardId` | `forecastTime` (UTC ISO hour) | heatIndex, hazard, risk, level, airTemp, wbgt (estimated, in sun), generatedAt, expiresAt (TTL, 5 days) |
+| `heatshield-dev-subscribers` | `phone` (E.164) | | wardId, group, language, channel, home (`pucca` \| `tin`), caregiverPhone, optedIn, createdAt, lastAlertAt, alertDate, alertsToday, lastAlertKey, checkInDate, checkInStatus (`asked` \| `ok` \| `help`). GSI `byWard` on wardId. Retained on stack delete. |
+
+Each `daily` entry: `{date, risk, level, heatIndex, peakAt, wbgtMax, workPlan: [{from, to, work}], nightMin, hotNight, actions: [code]}`.
+
+Cooling centres, water and rest points live in S3 at `resources/{city}.geojson` (points with `kind`, `hours`, `verified`), loaded by `make seed`.
 
 All tables use KMS encryption at rest. "Days" are Delhi calendar days (IST); timestamps are stored in UTC.
 
@@ -50,8 +54,10 @@ Base URL: stack output `ApiUrl`. CORS allows `https://heatshield.pages.dev` and 
 |---|---|
 | `GET /wards` | GeoJSON FeatureCollection; each feature's properties carry ward attributes, `fixture`, and `daily[0..3]` = `{date, risk, level, heatIndex, peakAt}`. Top-level `replayOf` is the replayed date or `null` |
 | `GET /wards/{wardId}/forecast` | `{ward, hourly[96]}`, from midnight IST today to the end of day +3 |
-| `POST /subscribe` | `{phone: "+91…", wardId, group: worker\|parent\|elderly, language: hi\|en, channel: whatsapp\|sms}` → 201 |
+| `POST /subscribe` | `{phone: "+91…", wardId, group: worker\|parent\|elderly, language: hi\|en, channel: whatsapp\|sms, home?: pucca\|tin, caregiverPhone?: "+91…"}` → 201 |
 | `POST /unsubscribe` | `{phone}` → 200 (same response whether or not the number exists) |
+| `GET /resources` | GeoJSON points: cooling centres, water and rest points, with `verified` (sample points are `false`) |
+| `GET /officer/checkins?date=YYYY-MM-DD` | Per ward: `{wardId, asked, ok, help, noReply}` for that IST day's wellbeing check-ins. Counts only, never phone numbers |
 | `POST /webhook/whatsapp` | Twilio form post (signed) → TwiML; 403 if the signature is missing or wrong |
 
 ## Risk model
@@ -75,6 +81,15 @@ Base URL: stack output `ApiUrl`. CORS allows `https://heatshield.pages.dev` and 
 
 Surface heat is not in V because it already raises H.
 
+**Body heat stress** (`heat.py`, per ward-hour, alongside H; see [research/differentiation.md](research/differentiation.md) for the evidence):
+
+- **WBGT estimate.** Stull (2011) wet bulb from temperature and humidity, then 0.7 × wet bulb + 0.3 × air (ISO 7243 shade form), + 3 °C for full sun. It is a screening estimate until radiation and wind are pulled for Liljegren (2008).
+- **Work plan.** ACGIH limits for acclimatised moderate work give minutes of work per hour: ≤ 28 °C normal, ≤ 29 → 45, ≤ 30 → 30, ≤ 31.5 → 15, above that stop. The day summary keeps the 06:00–20:00 hours that need cutting back.
+- **Tonight's low.** This is the lowest air temperature from 21:00 to 06:00 plus 0.35 × `lstOffset`, since built-up wards hold heat at night. A night at or above 30 °C is a **hot night**.
+- **Ward actions** (`actions.py`): `open_cooling` (High+), `shift_work` (any stop-work hour), `check_vulnerable` (Extreme), `night_shelter` (hot night), `cooling_gap` (High+ with no verified cooling or water point within 1 km of the ward centre).
+
+**Personal level** (`personal.py`): the ward's level, one step higher for a tin, asbestos or sheet roof, and at least High on a hot night for elderly people, parents and thin-roof homes.
+
 **Levels** (`risk.py`): Low < 0.18 ≤ Moderate < 0.30 ≤ High < 0.45 ≤ Extreme. For a ward of median V (0.43): an ordinary 40 °C afternoon is Moderate, an IMD heatwave hour is High, and a severe heatwave hour like Delhi on 28 May 2024 is High, or Extreme from V ≈ 0.5 up. The backtest cases are in `backend/tests/test_risk.py`.
 
 **When the weather pull fails**, the engine writes nothing and emits no `RiskScoresUpdated`; the last good scores stay up and the 07:00 / 19:00 dispatches still run on them. Every live pull is kept at `s3://…/raw/forecasts/{date}/{hour}.json`.
@@ -87,11 +102,12 @@ Off-season, nothing on the map is red. `make replay-fetch DATE=2024-05-28` downl
 
 | Rule | How |
 |---|---|
-| Who | Subscribers of wards whose target day is High or Extreme. Evening runs (≥ 17:00 IST) warn about tomorrow, earlier runs about today |
+| Who | Subscribers whose **personal** level for the target day is High or Extreme. Evening runs (≥ 17:00 IST) warn about tomorrow, earlier runs about today |
 | When | 07:00 and 19:00 IST schedules, plus after every risk-engine run. Never 22:00–06:00 IST |
 | At most 2 a day | `repo.claim_alert`: a conditional update on the subscriber row (`alertDate`, `alertsToday`) before sending, so overlapping runs can't double-send |
 | No repeats | `lastAlertKey` = `<target date>:<level>:<morn/eve>`. A 3-hourly refresh with the same level is skipped; an escalation to Extreme still goes out (within the cap) |
-| Content | How bad (level, feels-like °C), when (the hours at High or above), what to do, and how to stop: every message ends with "Reply STOP" |
+| Content | How bad (level, feels-like °C), when (the hours at High or above), what to do, and how to stop: every message ends with "Reply STOP". WhatsApp alerts add fixed personal lines: the stop-work hours and work-rest ratio (workers), a thin-roof warning, tonight's low (people at home on hot nights), the nearest verified place open at the peak hour, and on Extreme or hot-night days for elderly subscribers a check-in ("Reply OK or SOS") |
+| Check-ins | OK (ठीक) and SOS (मदद) replies are recorded on the subscriber row. SOS replies with 108 advice and the nearest cool place, and messages the caregiver (WhatsApp, SMS fallback). `GET /officer/checkins` counts them per ward |
 | WhatsApp | Twilio REST API; credentials from SSM SecureStrings `/heatshield/dev/twilio/{account-sid,auth-token,whatsapp-from}` (`make twilio-params`) |
 | SMS | SNS transactional SMS. Short template: one GSM segment in English, at most two Unicode segments in Hindi. `make sms-setup` sets the spend cap. Indian numbers need DLT registration outside the SNS sandbox |
 

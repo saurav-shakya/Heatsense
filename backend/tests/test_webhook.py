@@ -132,3 +132,65 @@ def test_reply_is_escaped_twiml(webhook, ctx):
     resp = webhook.handler(signed_event(message("hi", phone="+919000000000")), ctx)
     assert resp["headers"]["Content-Type"] == "text/xml"
     assert resp["body"].startswith('<?xml version="1.0" encoding="UTF-8"?><Response><Message>')
+
+
+def subscribe_elderly(caregiver: str | None = "+919811111111", lang: str = "en"):
+    from heatshield import repo
+    from heatshield.models import Channel, Group, Language, Subscriber
+
+    repo.put_subscriber(
+        Subscriber(
+            phone="+919876543210",
+            wardId="DL-001",
+            group=Group.ELDERLY,
+            language=Language(lang),
+            channel=Channel.WHATSAPP,
+            caregiverPhone=caregiver,
+        )
+    )
+
+
+def test_ok_reply_records_the_check_in(webhook, ctx):
+    from heatshield import repo
+
+    subscribe_elderly(lang="hi")
+    repo.set_check_in("+919876543210", "2099-01-01", "asked")  # an evening alert asked about a later day
+    resp = webhook.handler(signed_event(message("ठीक")), ctx)
+    assert "धन्यवाद" in resp["body"]
+    sub = repo.get_subscriber("+919876543210")
+    assert sub["checkInStatus"] == "ok" and sub["checkInDate"] == "2099-01-01"
+
+
+def test_ok_without_an_open_check_in_is_not_counted(webhook, ctx):
+    from heatshield import repo
+
+    subscribe_elderly()
+    resp = webhook.handler(signed_event(message("OK")), ctx)
+    assert "Thank you" in resp["body"]
+    assert "checkInStatus" not in repo.get_subscriber("+919876543210")
+
+
+def test_sos_tells_the_caregiver_and_names_a_cool_place(webhook, ctx, monkeypatch):
+    from conftest import put_resources
+
+    from heatshield import repo
+    from heatshield.messaging import SendResult
+
+    put_resources()
+    subscribe_elderly()
+    sent = []
+    monkeypatch.setattr(
+        webhook.messaging, "send_whatsapp", lambda p, b: sent.append((p, b)) or SendResult(True, "queued")
+    )
+    monkeypatch.setattr(webhook.resources, "is_open", lambda r, h: True)  # whatever the clock says
+    resp = webhook.handler(signed_event(message("sos")), ctx)
+    assert "call 108" in resp["body"] and "We have told your contact." in resp["body"]
+    assert "Community Hall Cool Room" in resp["body"]
+    assert sent[0][0] == "+919811111111" and "+919876543210" in sent[0][1] and "Sample A" in sent[0][1]
+    assert repo.get_subscriber("+919876543210")["checkInStatus"] == "help"
+
+
+def test_sos_without_caregiver_still_gets_emergency_advice(webhook, ctx):
+    subscribe_elderly(caregiver=None, lang="hi")
+    resp = webhook.handler(signed_event(message("मदद")), ctx)
+    assert "108" in resp["body"] and "परिचित" not in resp["body"]

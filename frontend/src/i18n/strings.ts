@@ -1,4 +1,4 @@
-import type { Group, Language, RiskLevel } from "../api/client";
+import type { ActionCode, Group, Home, Language, PlaceKind, RiskLevel } from "../api/client";
 
 export interface Strings {
   city: string;
@@ -45,6 +45,28 @@ export interface Strings {
   exportCsv: string;
   csvHeaders: string[];
   mapLoading: string;
+  workTitle: string;
+  workStop: (window: string) => string;
+  workRatio: (window: string, work: number) => string;
+  workSafe: string;
+  wbgtNote: (wbgt: number) => string;
+  nightTitle: string;
+  nightValue: (low: number, hot: boolean) => string;
+  placesTitle: string;
+  placeKinds: Record<PlaceKind, string>;
+  placeSample: string;
+  placeHours: (open: string, close: string) => string;
+  alwaysOpen: string;
+  noPlaces: string;
+  placesSampleNote: string;
+  actionsTitle: string;
+  actions: Record<ActionCode, string>;
+  roofQuestion: string;
+  roofs: Record<Home, string>;
+  roofHint: string;
+  caregiver: string;
+  caregiverHint: string;
+  placesLegend: string;
 }
 
 const en: Strings = {
@@ -95,8 +117,42 @@ const en: Strings = {
   subscribeOffline: "Alerts need the live service, which is not connected right now.",
   replayNotice: (date) => `Replay of ${date}. These scores use a past heatwave's weather, not today's forecast.`,
   exportCsv: "Download ranked list (CSV)",
-  csvHeaders: ["Rank", "Ward ID", "Ward", "Date", "Risk level", "Risk score", "Feels like (°C)", "Peak hour (IST)"],
+  csvHeaders: [
+    "Rank", "Ward ID", "Ward", "Date", "Risk level", "Risk score", "Feels like (°C)", "Peak hour (IST)",
+    "WBGT in sun, max (°C)", "Stop heavy work (IST)", "Tonight's low (°C)", "Ward actions",
+  ],
   mapLoading: "Loading map…",
+  workTitle: "For outdoor workers",
+  workStop: (w) => `Stop heavy outdoor work ${w}.`,
+  workRatio: (w, m) => `${w}: work ${m} min, rest ${60 - m} min in shade each hour.`,
+  workSafe: "Normal work hours are fine today for workers used to the heat. Drink water every 20 minutes.",
+  wbgtNote: (x) => `Heat stress in the sun (WBGT) peaks near ${Math.round(x)}°C. Above 31.5°C, steady moderate work is unsafe.`,
+  nightTitle: "Tonight",
+  nightValue: (low, hot) =>
+    hot
+      ? `Stays above ${Math.round(low)}°C, so the body gets no rest overnight. Elderly people and infants need a cool place to sleep.`
+      : `Cools to about ${Math.round(low)}°C.`,
+  placesTitle: "Nearest cool places and water",
+  placeKinds: { cooling: "Cooling centre", water: "Drinking water", rest: "Shaded rest point" },
+  placeSample: "sample",
+  placeHours: (a, b) => `${a} to ${b}`,
+  alwaysOpen: "Open all day",
+  noPlaces: "No cooling centre or water point listed within 2 km.",
+  placesSampleNote: "Sample points, not yet checked by the ward office. Alerts never send people to them.",
+  actionsTitle: "Ward office checklist",
+  actions: {
+    open_cooling: "Open cooling centres and water points through the risky hours.",
+    shift_work: "Move municipal and site outdoor work out of the stop-work hours.",
+    check_vulnerable: "Send ASHA workers or volunteers to elderly people who live alone.",
+    night_shelter: "Keep cooling spaces open tonight: the ward won't cool down.",
+    cooling_gap: "Nothing verified within 1 km: set up a temporary water or shade point.",
+  },
+  roofQuestion: "Roof over the home",
+  roofs: { pucca: "Brick or concrete", tin: "Tin, asbestos or plastic sheet" },
+  roofHint: "Rooms under thin roofs get hotter than outside, so alerts start one level earlier.",
+  caregiver: "Family member or neighbour to tell (optional)",
+  caregiverHint: "On the worst days the alert asks for an OK. If the reply is SOS, we message this number.",
+  placesLegend: "Cooling centres and water points",
 };
 
 const hi: Strings = {
@@ -147,8 +203,42 @@ const hi: Strings = {
   subscribeOffline: "अलर्ट के लिए लाइव सेवा चाहिए, जो अभी जुड़ी नहीं है।",
   replayNotice: (date) => `${date} का रीप्ले। ये स्कोर आज के पूर्वानुमान से नहीं, एक पुरानी लू के मौसम से बने हैं।`,
   exportCsv: "रैंक सूची डाउनलोड करें (CSV)",
-  csvHeaders: ["रैंक", "वार्ड ID", "वार्ड", "तारीख", "ख़तरे का स्तर", "ख़तरे का स्कोर", "महसूस तापमान (°C)", "सबसे गर्म समय (IST)"],
+  csvHeaders: [
+    "रैंक", "वार्ड ID", "वार्ड", "तारीख", "ख़तरे का स्तर", "ख़तरे का स्कोर", "महसूस तापमान (°C)", "सबसे गर्म समय (IST)",
+    "धूप में WBGT, अधिकतम (°C)", "भारी काम बंद (IST)", "आज रात न्यूनतम (°C)", "वार्ड के काम",
+  ],
   mapLoading: "नक्शा आ रहा है…",
+  workTitle: "बाहर काम करने वालों के लिए",
+  workStop: (w) => `${w} बाहर भारी काम बंद रखें।`,
+  workRatio: (w, m) => `${w}: हर घंटे ${m} मिनट काम, ${60 - m} मिनट छांव में आराम।`,
+  workSafe: "गर्मी के आदी कामगारों के लिए आज सामान्य काम ठीक है। हर 20 मिनट पानी पिएं।",
+  wbgtNote: (x) => `धूप में गर्मी का तनाव (WBGT) लगभग ${Math.round(x)}°C तक जाएगा। 31.5°C से ऊपर लगातार मध्यम काम सुरक्षित नहीं।`,
+  nightTitle: "आज रात",
+  nightValue: (low, hot) =>
+    hot
+      ? `तापमान ${Math.round(low)}°C से नीचे नहीं जाएगा, रात में शरीर को आराम नहीं मिलेगा। बुज़ुर्गों और छोटे बच्चों को ठंडी जगह सुलाएं।`
+      : `लगभग ${Math.round(low)}°C तक ठंडा होगा।`,
+  placesTitle: "सबसे पास ठंडी जगहें और पानी",
+  placeKinds: { cooling: "ठंडी जगह", water: "पीने का पानी", rest: "छांव में आराम" },
+  placeSample: "नमूना",
+  placeHours: (a, b) => `${a} से ${b}`,
+  alwaysOpen: "पूरे दिन खुला",
+  noPlaces: "2 किमी के अंदर कोई ठंडी जगह या पानी केंद्र दर्ज नहीं।",
+  placesSampleNote: "नमूना जगहें, वार्ड कार्यालय ने अभी जांची नहीं हैं। अलर्ट कभी इनका नाम नहीं भेजते।",
+  actionsTitle: "वार्ड कार्यालय के काम",
+  actions: {
+    open_cooling: "ख़तरे के घंटों में ठंडी जगहें और पानी केंद्र खुले रखें।",
+    shift_work: "नगर निगम और साइट का बाहरी काम काम-बंद घंटों से हटाएं।",
+    check_vulnerable: "अकेले रहने वाले बुज़ुर्गों के पास आशा कार्यकर्ता या स्वयंसेवक भेजें।",
+    night_shelter: "आज रात ठंडी जगहें खुली रखें: वार्ड रात में ठंडा नहीं होगा।",
+    cooling_gap: "1 किमी में कोई जांची हुई जगह नहीं: अस्थायी पानी या छांव केंद्र लगाएं।",
+  },
+  roofQuestion: "घर की छत",
+  roofs: { pucca: "ईंट या कंक्रीट", tin: "टीन, एस्बेस्टस या प्लास्टिक शीट" },
+  roofHint: "पतली छत के नीचे कमरा बाहर से ज़्यादा गर्म होता है, इसलिए चेतावनी एक स्तर पहले आएगी।",
+  caregiver: "परिवार या पड़ोसी जिसे बताना हो (वैकल्पिक)",
+  caregiverHint: "सबसे गर्म दिनों में अलर्ट OK पूछेगा। जवाब SOS आया तो हम इस नंबर पर संदेश भेजेंगे।",
+  placesLegend: "ठंडी जगहें और पानी केंद्र",
 };
 
 export const STRINGS: Record<Language, Strings> = { en, hi };

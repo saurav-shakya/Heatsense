@@ -4,7 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
-import type { WardCollection } from "../api/client";
+import type { PlaceCollection, WardCollection } from "../api/client";
 import type { Strings } from "../i18n/strings";
 
 // maplibre-gl finds its worker with a URL built at runtime, which Vite can't see, so the worker
@@ -18,6 +18,7 @@ const css = (name: string) => getComputedStyle(document.documentElement).getProp
 
 interface Props {
   data: WardCollection;
+  places: PlaceCollection | null;
   day: number;
   selected: string | null;
   onSelect: (wardId: string) => void;
@@ -43,7 +44,9 @@ function bounds(data: WardCollection): maplibregl.LngLatBoundsLike {
   return b;
 }
 
-export default function WardMap({ data, day, selected, onSelect, t }: Props) {
+const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
+
+export default function WardMap({ data, places, day, selected, onSelect, t }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
@@ -104,6 +107,21 @@ export default function WardMap({ data, day, selected, onSelect, t }: Props) {
           "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
         },
       });
+      // Cooling centres and water points: small dots, shown once zoomed in to a few wards.
+      m.addSource("places", { type: "geojson", data: (places as FeatureCollection | null) ?? EMPTY });
+      m.addLayer({
+        id: "places",
+        type: "circle",
+        source: "places",
+        minzoom: 11,
+        paint: {
+          "circle-radius": 4,
+          "circle-color": ["match", ["get", "kind"], "water", css("--place-water"), "rest", css("--place-rest"), css("--place-cooling")],
+          "circle-stroke-color": css("--sheet"),
+          "circle-stroke-width": 1.5,
+          "circle-opacity": ["case", ["get", "verified"], 1, 0.6],
+        },
+      });
       ready.current = true;
     });
 
@@ -126,6 +144,14 @@ export default function WardMap({ data, day, selected, onSelect, t }: Props) {
     if (!m || !ready.current) return;
     (m.getSource("wards") as GeoJSONSource | undefined)?.setData(forDay(data, day));
   }, [data, day]);
+
+  useEffect(() => {
+    const m = map.current;
+    const apply = () => (m?.getSource("places") as GeoJSONSource | undefined)?.setData((places as FeatureCollection | null) ?? EMPTY);
+    if (!m) return;
+    if (ready.current) apply();
+    else m.once("idle", apply);
+  }, [places]);
 
   useEffect(() => {
     const m = map.current;

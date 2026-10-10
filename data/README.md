@@ -79,3 +79,9 @@ The script computes the zonal stats per ward, `vulnerabilityScore` from `scripts
 ## Replay data
 
 `make replay-fetch DATE=2024-05-28` pulls the Open-Meteo archive for 27–31 May 2024 at every grid point of the current ward layer and uploads it to `s3://<DataBucket>/replay/delhi/2024-05-28.json`. See [docs/architecture.md](../docs/architecture.md#replay-mode).
+
+## Cooling centres, water and rest points
+
+`data/fixtures/delhi_resources.geojson` holds **sample** points (`python data/scripts/make_sample_resources.py`), all with `"verified": false`. The map shows them with a "sample" tag. Alerts and the WhatsApp bot only ever name verified points.
+
+For real data, collect DDMA / MCD cooling centres and Delhi Jal Board water points from the Delhi Heat Action Plan, plus delivery-platform rest points where the platforms share them. Save them as GeoJSON points with properties `{id, name, nameHi, kind: cooling | water | rest, hours: [open, close] (IST, omit if always open), verified}`. Set `verified: true` only after a ward officer has confirmed the place exists and is open. Then run `make seed`, which uploads the file to `s3://<bucket>/resources/delhi.geojson` (`--resources` to use another file).

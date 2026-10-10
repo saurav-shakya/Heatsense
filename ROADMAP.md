@@ -20,6 +20,20 @@ Everything left after the deployed skeleton (commit `e09c6b8`). Each item below 
 - [x] Map code-split, Devanagari subsets only; fixed the MapLibre worker missing from production builds
 - [x] Stretch: officer CSV export
 
+## Research-led features (Oct 2026)
+
+From [docs/research/differentiation.md](docs/research/differentiation.md). The code is done and tested (128 backend tests). Still to do:
+
+- [x] WBGT estimate, hourly work-rest plan, tonight's low and hot nights in the risk engine
+- [x] Personal level (thin roof, hot night), nearest verified cooling/water point, OK/SOS check-in with caregiver escalation, ward office checklist, `GET /resources`, `GET /officer/checkins`
+- [ ] (you) `make snapshot REPLAY=2024-05-28` so the static map shows the new work plan, tonight and checklist sections (Open-Meteo was unreachable when this branch was built)
+- [ ] (you) Replace `data/fixtures/delhi_resources.geojson` with DDMA/MCD cooling centres, Jal Board water points and platform rest points; set `verified: true` per point after a ward officer checks it; `make seed`
+- [ ] Pull shortwave radiation and wind from Open-Meteo and switch WBGT to Liljegren (2008)
+- [ ] Ward 1991–2020 minimum-temperature normals, so hot nights follow IMD's warm-night rule (≥ 4.5 °C above normal)
+- [ ] Protect `GET /officer/checkins` with an officer login before real check-ins exist
+- [ ] Interviews before the 2027 season: delivery riders and platform safety leads, contractors, tin-roof households, ward officers (guide in the research report)
+- [ ] Validation partner: NPCCHH / IHIP heatstroke reports and 108 call data for Delhi
+
 ## Deploy
 
 ### Deploy the web map to Cloudflare Pages

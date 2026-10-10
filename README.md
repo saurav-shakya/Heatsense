@@ -4,6 +4,8 @@ Ward-level heat risk for Indian cities, with plain-language alerts on WhatsApp a
 
 HeatShield combines the weather forecast with how exposed each ward is (surface heat, green cover, population density) and scores every ward as `Risk = Hazard × Vulnerability` every 3 hours. Residents subscribe by ward and get a short alert the evening before and the morning of a High or Extreme day. Ward officers use the map to see where water points and cooling centres matter most.
 
+**Why not just Google Weather?** A temperature or "feels like" number misses what actually hurts people in Indian cities: humid heat at work, nights that don't cool down, and rooms under tin roofs. So HeatShield also estimates WBGT, the work-safety standard, and gives outdoor workers an hourly work-rest plan. It flags hot nights and raises the alert level for thin-roof homes. Each alert names the nearest verified cooling centre or water point. On the worst days it checks on elderly people (reply OK or SOS) and tells a caregiver if they need help. Each ward office gets a daily checklist. The evidence, competitor teardown and buyer analysis are in [docs/research/](docs/research/README.md).
+
 > **Status: code complete, needs accounts and data.** Risk scores use live Open-Meteo forecasts and IMD-based hazard bands; alerts, the Claude-written advisories and the WhatsApp bot are built and tested. Still to do by hand: real ward boundaries and rasters (Phase 1, [data/README.md](data/README.md)), the Twilio sandbox, Bedrock model access, and the Cloudflare deploy. The ward layer is a placeholder hex grid until then. See [docs/architecture.md](docs/architecture.md) and [ROADMAP.md](ROADMAP.md).
 
 ## How it works

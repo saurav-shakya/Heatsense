@@ -1,6 +1,6 @@
 import type { Language, WardProps } from "../api/client";
 import type { Strings } from "../i18n/strings";
-import { hourLabel } from "./format";
+import { hourLabel, hourRange } from "./format";
 
 /** Every ward with a forecast for `day`, highest risk first. */
 export function rankWards(wards: WardProps[], day: number): WardProps[] {
@@ -16,7 +16,21 @@ function cell(value: string | number): string {
 export function wardsCsv(wards: WardProps[], day: number, lang: Language, t: Strings): string {
   const rows = rankWards(wards, day).map((w, i) => {
     const d = w.daily![day];
-    return [i + 1, w.wardId, w.name, d.date, t.levels[d.level], d.risk.toFixed(3), Math.round(d.heatIndex), hourLabel(d.peakAt, lang)];
+    const stops = (d.workPlan ?? []).filter((s) => s.work === 0);
+    return [
+      i + 1,
+      w.wardId,
+      w.name,
+      d.date,
+      t.levels[d.level],
+      d.risk.toFixed(3),
+      Math.round(d.heatIndex),
+      hourLabel(d.peakAt, lang),
+      d.wbgtMax !== undefined ? d.wbgtMax.toFixed(1) : "",
+      stops.length ? hourRange(stops[0].from, stops[stops.length - 1].to, lang) : "",
+      d.nightMin !== undefined ? d.nightMin.toFixed(1) : "",
+      (d.actions ?? []).map((a) => t.actions[a]).join(" "),
+    ];
   });
   return [t.csvHeaders, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
 }

@@ -22,6 +22,11 @@ class Channel(StrEnum):
     SMS = "sms"
 
 
+class Home(StrEnum):
+    PUCCA = "pucca"  # brick or concrete roof
+    TIN = "tin"  # tin, asbestos or plastic-sheet roof: hotter indoors than out in the afternoon
+
+
 def to_ddb(value: Any) -> Any:
     """DynamoDB rejects Python floats; convert recursively to Decimal."""
     if isinstance(value, float):
@@ -73,6 +78,8 @@ class RiskForecast:
     level: str
     generatedAt: str
     expiresAt: int  # epoch seconds, DynamoDB TTL
+    airTemp: float | None = None  # degC, 2 m air temperature
+    wbgt: float | None = None  # degC, estimated WBGT in full sun (heatshield.heat.wbgt_c)
 
     def to_item(self) -> dict:
         return to_ddb(asdict(self))
@@ -85,6 +92,8 @@ class Subscriber:
     group: Group
     language: Language
     channel: Channel
+    home: Home | None = None
+    caregiverPhone: str | None = None  # E.164; told when the subscriber replies HELP
     optedIn: bool = True
     lastAlertAt: str | None = None
     createdAt: str | None = field(default=None)
@@ -93,6 +102,9 @@ class Subscriber:
     alertDate: str | None = None
     alertsToday: int | None = None
     lastAlertKey: str | None = None
+    # Wellbeing check-in on dangerous days: IST date asked, and "asked" | "ok" | "help".
+    checkInDate: str | None = None
+    checkInStatus: str | None = None
 
     def to_item(self) -> dict:
         return to_ddb(asdict(self))
