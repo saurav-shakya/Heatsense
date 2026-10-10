@@ -19,7 +19,7 @@ BACKEND  := backend
 FRONTEND := frontend
 
 .PHONY: help install lint test test-data build deploy-backend fixture seed invoke-risk replay-fetch replay live \
-        invoke-alerts twilio-params sms-setup dev env-frontend deploy-frontend deploy logs outputs destroy
+        snapshot invoke-alerts twilio-params sms-setup dev env-frontend deploy-frontend deploy logs outputs destroy
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -77,6 +77,9 @@ twilio-params:  ## Store Twilio credentials in SSM Parameter Store (prompts; not
 
 sms-setup:  ## Set SNS SMS to transactional with a 1 USD/month spend cap
 	aws sns set-sms-attributes --attributes DefaultSMSType=Transactional,MonthlySpendLimit=1
+
+snapshot:  ## Save a scored forecast as static JSON for the map without an API: make snapshot [REPLAY=2024-05-28]
+	cd $(BACKEND) && uv run python ../data/scripts/build_snapshot.py --file ../$(WARDS_FILE) $(if $(REPLAY),--replay $(REPLAY))
 
 dev:  ## Run the frontend locally against the deployed API
 	cd $(FRONTEND) && npm run dev

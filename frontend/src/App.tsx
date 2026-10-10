@@ -5,7 +5,7 @@ import RiskLegend from "./components/RiskLegend";
 import TopWards from "./components/TopWards";
 import WardPanel from "./components/WardPanel";
 import { STRINGS } from "./i18n/strings";
-import { dayLabel, todayLong } from "./lib/format";
+import { dayLabel, hourLabel, istDate, todayLong } from "./lib/format";
 
 // MapLibre is most of the bundle: load it after the headline and ranked list have rendered.
 const WardMap = lazy(() => import("./components/WardMap"));
@@ -50,8 +50,11 @@ export default function App() {
 
   const wards = load.state === "ready" ? load.data.features.map((f) => f.properties) : [];
   const dates = wards[0]?.daily?.map((d) => d.date) ?? [];
+  // Name days by their real date, so a saved snapshot from an earlier day isn't called "today".
+  const todayIso = istDate(new Date().toISOString());
+  const tomorrowIso = istDate(new Date(Date.now() + 86_400_000).toISOString());
   const dayName = (i: number) =>
-    i === 0 ? t.dayToday : i === 1 ? t.dayTomorrow : dates[i] ? dayLabel(dates[i], lang) : "";
+    dates[i] === todayIso ? t.dayToday : dates[i] === tomorrowIso ? t.dayTomorrow : dates[i] ? dayLabel(dates[i], lang) : "";
 
   const atRisk = useMemo(
     () => wards.filter((w) => ["high", "extreme"].includes(w.daily?.[day]?.level ?? "")).length,
@@ -59,6 +62,7 @@ export default function App() {
   );
   const selectedWard = wards.find((w) => w.wardId === selected) ?? null;
   const replayOf = load.state === "ready" ? load.data.replayOf : null;
+  const snapshotAt = load.state === "ready" ? load.data.snapshotAt : undefined;
   const isSample = wards.some((w) => w.fixture);
 
   return (
@@ -78,6 +82,11 @@ export default function App() {
         </div>
       </header>
 
+      {snapshotAt && (
+        <p className="replay-banner" role="status">
+          {t.snapshotNotice(`${dayLabel(istDate(snapshotAt), lang, true)}, ${hourLabel(snapshotAt, lang)}`)}
+        </p>
+      )}
       {replayOf && (
         <p className="replay-banner" role="status">
           {t.replayNotice(dayLabel(replayOf, lang, true))}
