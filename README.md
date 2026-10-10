@@ -43,6 +43,8 @@ make destroy          # delete the stack (asks first; subscribers table is kept)
 
 ## Build plan
 
+The full task list for every phase, with checklists, is in [ROADMAP.md](ROADMAP.md).
+
 1. **Data foundation**: real MCD ward boundaries, Landsat LST, Sentinel-2 NDVI, WorldPop density per ward ([data/README.md](data/README.md))
 2. **Risk engine and map**: Open-Meteo pulls, the real `H × V`, IMD-tuned thresholds, replay mode for an off-season demo
 3. **AI and alerts**: Bedrock advisories per group and language, Twilio WhatsApp + SNS SMS, quiet hours and the 2-a-day cap, Ask HeatShield bot
