@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# SAM
+backend/.aws-sam/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+frontend/.wrangler/
+.wrangler/
+
+# Env and secrets (commit only *.example)
+.env
+.env.*
+!.env.example
+
+# Data pipeline working dirs
+data/raw/
+data/processed/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

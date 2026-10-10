@@ -1,0 +1,5 @@
+# Cloudflare Pages project for the HeatShield web map.
+# Deploy: make deploy-frontend  (wrangler pages deploy dist --project-name heatshield)
+name = "heatshield"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-01"

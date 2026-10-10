@@ -1,0 +1,108 @@
+/* HeatShield design tokens.
+   Civic broadsheet: newsprint paper, carbon ink, hairline rules. The only strong colour
+   on the page is the risk ramp (sand -> turmeric -> brick -> oxblood); interaction uses
+   indigo so it never reads as a risk level. No gradients, no glow, no shadows. */
+
+:root {
+  color-scheme: light;
+
+  --paper: #ece9e1;
+  --sheet: #f6f4ef;
+  --ink: #1f1d1a;
+  --ink-2: #57534b;
+  --ink-3: #807a70;
+  --rule: #cdc7ba;
+  --rule-strong: #1f1d1a;
+  --indigo: #2c3e73;
+  --indigo-wash: #dfe2ea;
+  --error: #8f2418;
+
+  --risk-low: #e2d8be;
+  --risk-moderate: #d39b2a;
+  --risk-high: #b0432a;
+  --risk-extreme: #5c1919;
+  --on-risk-low: #1f1d1a;
+  --on-risk-moderate: #1f1d1a;
+  --on-risk-high: #f6f4ef;
+  --on-risk-extreme: #f6f4ef;
+
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif;
+  --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans Devanagari", "IBM Plex Sans", sans-serif;
+
+  /* Type scale (1.2 ratio from 16px). */
+  --t-xs: 0.8125rem;
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.2rem;
+  --t-lg: 1.44rem;
+  --t-xl: clamp(1.85rem, 1.3rem + 2.2vw, 2.6rem);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --side-width: 420px;
+}
+
+:root[lang="hi"] {
+  /* Devanagari needs more vertical room for matras. */
+  --leading-body: 1.7;
+  --leading-head: 1.25;
+}
+
+:root:not([lang="hi"]) {
+  --leading-body: 1.5;
+  --leading-head: 1.08;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--t-base);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+p,
+ol,
+ul {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}
