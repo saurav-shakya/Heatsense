@@ -63,6 +63,7 @@ make twilio-params    # store Twilio credentials in SSM (prompts)
 make sms-setup        # SNS SMS: transactional, spend cap
 make invoke-alerts    # run the alert dispatcher now
 make dev              # local map at http://localhost:5173 against the deployed API
+make snapshot         # save scored wards as static JSON so the map runs without an API (REPLAY=2024-05-28 for a heatwave)
 make deploy-frontend  # build + publish to Cloudflare Pages (project "heatshield")
 make deploy           # both
 make logs FN=risk-engine

@@ -40,6 +40,8 @@ export interface Strings {
   sampleData: string;
   noForecast: string;
   replayNotice: (date: string) => string;
+  snapshotNotice: (when: string) => string;
+  subscribeOffline: string;
   exportCsv: string;
   csvHeaders: string[];
   mapLoading: string;
@@ -89,6 +91,8 @@ const en: Strings = {
   retry: "Try again",
   sampleData: "Sample wards. The grid and ward attributes are placeholders until real ward boundaries are loaded; the heat forecast is live.",
   noForecast: "No forecast yet for this ward. The next update runs within three hours.",
+  snapshotNotice: (when) => `Saved forecast from ${when}. The live service is not connected, so these scores are not updating.`,
+  subscribeOffline: "Alerts need the live service, which is not connected right now.",
   replayNotice: (date) => `Replay of ${date}. These scores use a past heatwave's weather, not today's forecast.`,
   exportCsv: "Download ranked list (CSV)",
   csvHeaders: ["Rank", "Ward ID", "Ward", "Date", "Risk level", "Risk score", "Feels like (°C)", "Peak hour (IST)"],
@@ -139,6 +143,8 @@ const hi: Strings = {
   retry: "फिर कोशिश करें",
   sampleData: "नमूना वार्ड। असली वार्ड सीमाएं जुड़ने तक ग्रिड और वार्ड की जानकारी अस्थायी है; गर्मी का पूर्वानुमान असली है।",
   noForecast: "इस वार्ड का पूर्वानुमान अभी नहीं है। अगला अपडेट तीन घंटे में आएगा।",
+  snapshotNotice: (when) => `${when} का सहेजा गया पूर्वानुमान। लाइव सेवा जुड़ी नहीं है, इसलिए ये स्कोर अपडेट नहीं हो रहे।`,
+  subscribeOffline: "अलर्ट के लिए लाइव सेवा चाहिए, जो अभी जुड़ी नहीं है।",
   replayNotice: (date) => `${date} का रीप्ले। ये स्कोर आज के पूर्वानुमान से नहीं, एक पुरानी लू के मौसम से बने हैं।`,
   exportCsv: "रैंक सूची डाउनलोड करें (CSV)",
   csvHeaders: ["रैंक", "वार्ड ID", "वार्ड", "तारीख", "ख़तरे का स्तर", "ख़तरे का स्कोर", "महसूस तापमान (°C)", "सबसे गर्म समय (IST)"],

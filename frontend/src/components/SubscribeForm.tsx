@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError, type Channel, type Group, type Language } from "../api/client";
+import { api, ApiError, isLive, type Channel, type Group, type Language } from "../api/client";
 import type { Strings } from "../i18n/strings";
 
 interface Props {
@@ -30,6 +30,8 @@ export default function SubscribeForm({ wardId, lang, t }: Props) {
       setStatus({ state: "error", message: err instanceof ApiError ? err.message : t.loadFailed });
     }
   }
+
+  if (!isLive()) return <p className="section-note">{t.subscribeOffline}</p>;
 
   if (status.state === "done") {
     return (
