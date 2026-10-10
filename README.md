@@ -4,15 +4,36 @@ Ward-level heat risk for Indian cities, with plain-language alerts on WhatsApp a
 
 HeatShield combines the weather forecast with how exposed each ward is (surface heat, green cover, population density) and scores every ward as `Risk = Hazard × Vulnerability` every 3 hours. Residents subscribe by ward and get a short alert the evening before and the morning of a High or Extreme day. Ward officers use the map to see where water points and cooling centres matter most.
 
-> **Status: deployed skeleton.** The infrastructure, API, map and subscribe flow work end to end. The ward layer and hazard values are placeholders until the real data pipeline (Phase 1–2) lands. See [docs/architecture.md](docs/architecture.md).
+> **Status: code complete, needs accounts and data.** Risk scores use live Open-Meteo forecasts and IMD-based hazard bands; alerts, the Claude-written advisories and the WhatsApp bot are built and tested. Still to do by hand: real ward boundaries and rasters (Phase 1, [data/README.md](data/README.md)), the Twilio sandbox, Bedrock model access, and the Cloudflare deploy. The ward layer is a placeholder hex grid until then. See [docs/architecture.md](docs/architecture.md) and [ROADMAP.md](ROADMAP.md).
+
+## How it works
+
+```mermaid
+flowchart TD
+    OM[Open-Meteo forecast API] --> RE
+    S3[(S3: ward GeoJSON + static layers)] --> RE
+    SCH[EventBridge Scheduler<br/>rate 3 hours] --> RE[Lambda: risk engine<br/>Risk = H × V]
+    RE --> DDB[(DynamoDB<br/>Wards · RiskForecasts · Subscribers)]
+    RE -- RiskScoresUpdated --> BUS{{EventBridge bus heatshield-dev}}
+    BUS --> AD[Lambda: alert dispatcher]
+    CRON[Scheduler 07:00 / 19:00 IST] --> AD
+    AD --> BR[Amazon Bedrock<br/>Hindi + English advisories]
+    BR --> MSG[SNS SMS · Twilio WhatsApp]
+    DDB --> API[HTTP API + Lambda<br/>map data · subscribe · bot webhook]
+    API --> WEB[React map on Cloudflare Pages]
+    MSG --> P[People]
+    WEB --> P
+```
+
+Details: [docs/architecture.md](docs/architecture.md) (risk model, alert rules, replay mode, data model, API).
 
 ## Repository layout
 
 ```
 backend/     AWS SAM app: template.yaml, 4 Python Lambdas, shared layer, tests
   functions/   api · risk_engine · alert_dispatcher · whatsapp_webhook
-  layers/common/heatshield/   config, models, risk scoring, DynamoDB access
-data/        ward layer fixtures + scripts (hex grid, seeding); Phase 1 pipeline notes
+  layers/common/heatshield/   config, models, heat/hazard, risk, weather, advisory, messaging, DynamoDB access
+data/        ward layer fixture, seeding, Phase 1 ward-layer builder, replay fetcher
 frontend/    React + Vite + MapLibre web map, deployed to Cloudflare Pages
 docs/        architecture, data model, API contract
 Makefile     every command you need
@@ -24,16 +45,23 @@ Makefile     every command you need
 - AWS SAM CLI (`uv tool install aws-sam-cli`), [uv](https://docs.astral.sh/uv/), Python 3.12
 - Node 22+ (Wrangler is a dev dependency, so there's nothing to install globally)
 - Cloudflare account: run `npx wrangler login` once inside `frontend/`
+- For alerts: Bedrock model access for Claude in `us-east-1` (console → Bedrock → Model access), a Twilio account with the WhatsApp sandbox (`make twilio-params`), and an SNS SMS sandbox number
 
 ## Commands
 
 ```bash
 make install          # uv sync + npm install
-make test             # backend unit tests (pytest + moto)
+make test             # backend unit tests (pytest + moto, no network)
+make test-data        # data pipeline tests (rasterio, synthetic rasters)
 make lint             # ruff, sam validate --lint, tsc
 make deploy-backend   # sam build && sam deploy  -> stack heatshield-dev (us-east-1)
-make seed             # load the Delhi ward layer into S3 + DynamoDB
+make seed             # load the ward layer into S3 + DynamoDB (WARDS_FILE=... for real wards)
 make invoke-risk      # score all wards now instead of waiting for the schedule
+make replay-fetch DATE=2024-05-28   # store a past heatwave for off-season demos
+make replay DATE=2024-05-28         # score from it (map shows "Replay of ..."); make live to go back
+make twilio-params    # store Twilio credentials in SSM (prompts)
+make sms-setup        # SNS SMS: transactional, spend cap
+make invoke-alerts    # run the alert dispatcher now
 make dev              # local map at http://localhost:5173 against the deployed API
 make deploy-frontend  # build + publish to Cloudflare Pages (project "heatshield")
 make deploy           # both

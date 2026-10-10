@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Language, type WardCollection } from "./api/client";
 import DayPicker from "./components/DayPicker";
 import RiskLegend from "./components/RiskLegend";
 import TopWards from "./components/TopWards";
-import WardMap from "./components/WardMap";
 import WardPanel from "./components/WardPanel";
 import { STRINGS } from "./i18n/strings";
 import { dayLabel, todayLong } from "./lib/format";
+
+// MapLibre is most of the bundle: load it after the headline and ranked list have rendered.
+const WardMap = lazy(() => import("./components/WardMap"));
 
 type Load = { state: "loading" } | { state: "error" } | { state: "ready"; data: WardCollection };
 
@@ -56,6 +58,8 @@ export default function App() {
     [wards, day],
   );
   const selectedWard = wards.find((w) => w.wardId === selected) ?? null;
+  const replayOf = load.state === "ready" ? load.data.replayOf : null;
+  const isSample = wards.some((w) => w.fixture);
 
   return (
     <div className="page">
@@ -73,6 +77,12 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {replayOf && (
+        <p className="replay-banner" role="status">
+          {t.replayNotice(dayLabel(replayOf, lang, true))}
+        </p>
+      )}
 
       <main className="layout">
         <aside className="side">
@@ -109,17 +119,19 @@ export default function App() {
                   onBack={() => setSelected(null)}
                 />
               ) : (
-                <TopWards wards={wards} day={day} t={t} onSelect={setSelected} />
+                <TopWards wards={wards} day={day} lang={lang} t={t} onSelect={setSelected} />
               )}
               <RiskLegend t={t} />
-              <p className="sample-note">{t.sampleData}</p>
+              {isSample && <p className="sample-note">{t.sampleData}</p>}
             </section>
           )}
         </aside>
 
         <div className="map-area">
           {load.state === "ready" && (
-            <WardMap data={load.data} day={day} selected={selected} onSelect={setSelected} t={t} />
+            <Suspense fallback={<p className="map-loading">{t.mapLoading}</p>}>
+              <WardMap data={load.data} day={day} selected={selected} onSelect={setSelected} t={t} />
+            </Suspense>
           )}
         </div>
       </main>

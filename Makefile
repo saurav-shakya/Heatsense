@@ -7,15 +7,19 @@ STACK       ?= heatshield-dev
 CITY        ?= delhi
 PAGES_PROJECT ?= heatshield
 FN          ?= api
+WARDS_FILE  ?= data/fixtures/delhi_wards.geojson
+DATE        ?= 2024-05-28
+DATA_DEPS   := --with numpy --with rasterio --with shapely --with pyproj --with pytest
 
 export AWS_PROFILE AWS_REGION
 export SAM_CLI_TELEMETRY = 0
+SHELL := /bin/bash
 
 BACKEND  := backend
 FRONTEND := frontend
 
-.PHONY: help install lint test build deploy-backend seed invoke-risk dev env-frontend \
-        deploy-frontend deploy logs outputs destroy
+.PHONY: help install lint test test-data build deploy-backend fixture seed invoke-risk replay-fetch replay live \
+        invoke-alerts twilio-params sms-setup dev env-frontend deploy-frontend deploy logs outputs destroy
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -31,6 +35,9 @@ lint:  ## Lint backend, validate SAM template, type-check frontend
 test:  ## Run backend unit tests
 	cd $(BACKEND) && uv run pytest
 
+test-data:  ## Run the data pipeline tests (rasterio etc. via uv, no network)
+	uv run --no-project $(DATA_DEPS) pytest -q -p no:cacheprovider data/tests
+
 build:  ## Build Lambda artifacts and the frontend bundle
 	cd $(BACKEND) && sam build
 	cd $(FRONTEND) && npm run build
@@ -38,12 +45,38 @@ build:  ## Build Lambda artifacts and the frontend bundle
 deploy-backend:  ## sam build + deploy the stack
 	cd $(BACKEND) && sam build && sam deploy
 
-seed:  ## Regenerate the Delhi fixture grid and load it into S3 + DynamoDB
+fixture:  ## Regenerate the synthetic hex-grid ward layer
 	python3 data/scripts/make_hex_grid.py
-	cd $(BACKEND) && uv run python ../data/scripts/seed.py --stack $(STACK) --city $(CITY)
+
+seed:  ## Load a ward layer into S3 + DynamoDB: make seed [WARDS_FILE=data/processed/delhi_wards.geojson]
+	cd $(BACKEND) && uv run python ../data/scripts/seed.py --stack $(STACK) --city $(CITY) --file ../$(WARDS_FILE)
 
 invoke-risk:  ## Run the risk engine once now (instead of waiting for the 3-hour schedule)
 	cd $(BACKEND) && sam remote invoke RiskEngineFunction --stack-name $(STACK)
+
+replay-fetch:  ## Download a past heatwave from Open-Meteo and upload it: make replay-fetch DATE=2024-05-28
+	cd $(BACKEND) && uv run python ../data/scripts/fetch_replay.py --date $(DATE) --stack $(STACK) \
+	  --city $(CITY) --file ../$(WARDS_FILE) --upload
+
+replay:  ## Score from the stored heatwave until the next 3-hourly run: make replay DATE=2024-05-28
+	cd $(BACKEND) && sam remote invoke RiskEngineFunction --stack-name $(STACK) --event '{"replay": "$(DATE)"}'
+
+live:  ## Score from live forecasts now (ends a one-off replay)
+	cd $(BACKEND) && sam remote invoke RiskEngineFunction --stack-name $(STACK) --event '{"replay": ""}'
+
+invoke-alerts:  ## Run the alert dispatcher once now (respects quiet hours and the daily cap)
+	cd $(BACKEND) && sam remote invoke AlertDispatcherFunction --stack-name $(STACK)
+
+twilio-params:  ## Store Twilio credentials in SSM Parameter Store (prompts; nothing lands in shell history)
+	@read -p "Twilio account SID: " sid && read -s -p "Twilio auth token: " token && echo && \
+	read -p "WhatsApp sender (sandbox: +14155238886): " from && \
+	for kv in "account-sid=$$sid" "auth-token=$$token" "whatsapp-from=$$from"; do \
+	  aws ssm put-parameter --name "/heatshield/dev/twilio/$${kv%%=*}" --type SecureString --overwrite \
+	    --value "$${kv#*=}" >/dev/null || exit 1; \
+	done && echo "stored /heatshield/dev/twilio/{account-sid,auth-token,whatsapp-from}"
+
+sms-setup:  ## Set SNS SMS to transactional with a 1 USD/month spend cap
+	aws sns set-sms-attributes --attributes DefaultSMSType=Transactional,MonthlySpendLimit=1
 
 dev:  ## Run the frontend locally against the deployed API
 	cd $(FRONTEND) && npm run dev

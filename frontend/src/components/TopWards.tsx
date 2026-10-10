@@ -1,20 +1,23 @@
-import type { WardProps } from "../api/client";
+import type { Language, WardProps } from "../api/client";
 import type { Strings } from "../i18n/strings";
+import { downloadCsv, rankWards, wardsCsv } from "../lib/export";
 import LevelChip from "./LevelChip";
 
 interface Props {
   wards: WardProps[];
   day: number;
+  lang: Language;
   t: Strings;
   onSelect: (wardId: string) => void;
 }
 
-/** Ranked top 10 for ward officers: a true ranking, so it is numbered. */
-export default function TopWards({ wards, day, t, onSelect }: Props) {
-  const ranked = wards
-    .filter((w) => w.daily?.[day])
-    .sort((a, b) => b.daily![day].risk - a.daily![day].risk)
-    .slice(0, 10);
+/** Ranked top 10 for ward officers: a true ranking, so it is numbered. The full list exports as CSV. */
+export default function TopWards({ wards, day, lang, t, onSelect }: Props) {
+  const ranked = rankWards(wards, day).slice(0, 10);
+  const exportList = () => {
+    const date = wards.find((w) => w.daily?.[day])?.daily?.[day].date ?? "forecast";
+    downloadCsv(`heatshield-wards-${date}.csv`, wardsCsv(wards, day, lang, t));
+  };
 
   return (
     <section className="top-wards" aria-labelledby="top-title">
@@ -37,6 +40,11 @@ export default function TopWards({ wards, day, t, onSelect }: Props) {
           );
         })}
       </ol>
+      {ranked.length > 0 && (
+        <button className="button-quiet export" onClick={exportList}>
+          {t.exportCsv}
+        </button>
+      )}
     </section>
   );
 }

@@ -1,11 +1,13 @@
-import "@fontsource/ibm-plex-sans/400.css";
-import "@fontsource/ibm-plex-sans/500.css";
-import "@fontsource/ibm-plex-sans/600.css";
-import "@fontsource/ibm-plex-sans-condensed/600.css";
-import "@fontsource/ibm-plex-sans-condensed/700.css";
-import "@fontsource/ibm-plex-sans-devanagari/400.css";
-import "@fontsource/ibm-plex-sans-devanagari/600.css";
-import "maplibre-gl/dist/maplibre-gl.css";
+// Only the subsets and weights the CSS uses. Latin text renders in Plex Sans / Condensed; the
+// Devanagari family only supplies Hindi glyphs. MapLibre's CSS loads with the map chunk.
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-sans-condensed/latin-600.css";
+import "@fontsource/ibm-plex-sans-condensed/latin-700.css";
+import "@fontsource/ibm-plex-sans-devanagari/devanagari-400.css";
+import "@fontsource/ibm-plex-sans-devanagari/devanagari-500.css";
+import "@fontsource/ibm-plex-sans-devanagari/devanagari-600.css";
 import "./styles/tokens.css";
 import "./styles/app.css";
 

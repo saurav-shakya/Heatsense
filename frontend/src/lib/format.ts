@@ -3,14 +3,14 @@ import type { Language } from "../api/client";
 const IST = "Asia/Kolkata";
 const locale = (lang: Language) => (lang === "hi" ? "hi-IN" : "en-IN");
 
-/** "2026-10-11" -> "Sun 11 Oct" (rendered as an IST calendar date). */
-export function dayLabel(date: string, lang: Language): string {
-  return new Date(`${date}T12:00:00+05:30`).toLocaleDateString(locale(lang), {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: IST,
-  });
+/** "2026-10-11" -> "Sun 11 Oct" (rendered as an IST calendar date); withYear -> "11 Oct 2026". */
+export function dayLabel(date: string, lang: Language, withYear = false): string {
+  return new Date(`${date}T12:00:00+05:30`).toLocaleDateString(
+    locale(lang),
+    withYear
+      ? { day: "numeric", month: "long", year: "numeric", timeZone: IST }
+      : { weekday: "short", day: "numeric", month: "short", timeZone: IST },
+  );
 }
 
 /** UTC ISO -> "2 pm" in Delhi time. */

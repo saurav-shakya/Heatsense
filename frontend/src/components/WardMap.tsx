@@ -1,9 +1,15 @@
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { FeatureCollection } from "geojson";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
 import type { WardCollection } from "../api/client";
 import type { Strings } from "../i18n/strings";
+
+// maplibre-gl finds its worker with a URL built at runtime, which Vite can't see, so the worker
+// file never reached dist/ and GeoJSON sources failed to load in production builds. Ship it explicitly.
+maplibregl.setWorkerUrl(workerUrl);
 
 // Free vector basemap, no API key. Positron is near-monochrome so the risk fills carry the colour.
 const BASEMAP = "https://tiles.openfreemap.org/styles/positron";

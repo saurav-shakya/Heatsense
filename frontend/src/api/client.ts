@@ -21,11 +21,13 @@ export interface WardProps {
   popDensity: number;
   vulnerabilityScore: number;
   daily: DailyRisk[] | null;
+  fixture?: boolean; // true for the synthetic placeholder grid
 }
 
 export interface WardCollection {
   type: "FeatureCollection";
   city: string;
+  replayOf: string | null; // set while scores replay a past heatwave (YYYY-MM-DD)
   features: Array<{
     type: "Feature";
     id: string;
